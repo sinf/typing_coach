@@ -2,6 +2,7 @@
 import pandas as pd
 import numpy as np
 import sys
+import re
 import traceback
 import curses as cu
 import sqlite3
@@ -13,6 +14,9 @@ ATT=lambda:None
 the_sqc=None
 the_wordlist=None
 
+keys_lh = 'qwertasdfgzxcvb<>!@#$%^\t 123456`~'
+keys_rh = 'yuiop[]hjkl;\'\\bnm,./7890-^&*()_= ~\r'
+
 def get_timestamp():
 	return int(time())
 
@@ -20,7 +24,7 @@ def series_to_text(word_series, max_ch):
 	out=""
 	x=0
 	for index, word in word_series.items():
-		s=" " + word
+		s=" " + str(word).strip()
 		x += len(s)
 		if x > max_ch:
 			break
@@ -44,8 +48,23 @@ class Wordlist:
 		df.word = df.word.str.strip()
 		self.df = self.df.append(df)
 	def get(self, max_chars=80):
-		s=series_to_text(self.df['word'].sample(n=max_chars/2), max_chars)
+		s=series_to_text(self.df['word'].sample(n=max_chars/3, replace=True), max_chars)
 		assert(len(s) <= max_chars)
+		return s
+
+class ChSeqGen:
+	def __init__(self):
+		pass
+	def get(self, max_chars=80):
+		an = Analysis(1000)
+		df=pd.DataFrame()
+		for n in (4,5):
+			an.gen_seq(n)
+			df=df.append(an.mseq[n])
+		w=df.typo + df.delay/400.0
+		words=df.sample(n=max_chars, weights=w, replace=True)
+		words=words.index.to_series()
+		s=series_to_text(words, max_chars*2)
 		return s
 
 class ScrollingWindow:
@@ -126,6 +145,7 @@ class InputBox:
 		mistake = ch != ch_exp
 		if mistake:
 			self.swin.attr[self.caret] = ATT.cursor_mistake
+			cu.beep()
 		if self.halt_on_mistake == False or not mistake:
 			self.swin.attr[self.caret] = ATT.typed if self.swin.attr[self.caret] is ATT.cursor else ATT.mistake
 			self.caret += 1
@@ -137,12 +157,15 @@ class InputBox:
 			# start recording from the 2nd character
 			delay = now - self.t_begin
 			delay_ms = int(delay * 1000)
-			self.sql_data += [(key, key_exp, delay_ms, get_timestamp())]
-			if not mistake:
-				# let correct keystrokes contribute to typing speed
-				self.delay_buffer.insert(0, delay)
-				while len(self.delay_buffer) > self.delay_buffer_limit:
-					self.delay_buffer.pop()
+		else:
+			delay = np.nan
+			delay_ms = np.nan
+		self.sql_data += [(key, key_exp, delay_ms, get_timestamp())]
+		if self.t_begin is not None and not mistake:
+			# let correct keystrokes contribute to typing speed
+			self.delay_buffer.insert(0, delay)
+			while len(self.delay_buffer) > self.delay_buffer_limit:
+				self.delay_buffer.pop()
 		self.t_begin = now
 	def cpm(self):
 		if len(self.delay_buffer) == 0 or self.t_begin is None:
@@ -154,7 +177,7 @@ class InputBox:
 	def save_data(self):
 		if len(self.sql_data) > 0 and the_sqc is not None:
 			the_sqc.executemany( \
-				'insert into keystrokes (pressed,expected,delay_ms,timestamp) values (?,?,?,?)',
+				'INSERT INTO keystrokes (pressed,expected,delay_ms,timestamp) VALUES (?,?,?,?)',
 					self.sql_data)
 			the_sqc.commit()
 			self.sql_data = []
@@ -166,24 +189,18 @@ class InputBox:
 	def paint(self):
 		self.swin.center_at(self.caret)
 		self.swin.paint()
+	
 
-def main(stdscr):
-
-	p = argparse.ArgumentParser()
-	p.add_argument("-c", "--cont", help="continue on mistakes", action="store_true")
-	p.add_argument("-d", "--db", nargs=1, help='sqlite3 database (or "none")', default=['keystrokes.db'])
-	p.add_argument("-p", "--page-size", nargs=1, help='characters per page', type=int, default=[300])
-	p.add_argument("-w", "--wordlist", nargs='+', help='wordlist file', default=['words/ascii_english'])
-	args = p.parse_args()
+def practice(stdscr, args):
 
 	global the_wordlist
-	the_wordlist = Wordlist()
-	for path in args.wordlist:
-		the_wordlist.append_plain(path)
 
-	if args.db[0] != "none":
-		global the_sqc
-		the_sqc = sqlite3.connect(args.db[0])
+	if args.gen:
+		the_wordlist = ChSeqGen()
+	else:
+		the_wordlist = Wordlist()
+		for path in args.wordlist:
+			the_wordlist.append_plain(path)
 
 	input_box = InputBox()
 
@@ -242,10 +259,140 @@ def main(stdscr):
 			input_box.save_data()
 		if the_sqc is not None:
 			the_sqc.execute('PRAGMA optimize')
+			tail = the_sqc.execute('SELECT * FROM keystrokes ORDER BY sequence DESC LIMIT 3').fetchall()
 			the_sqc.close()
 			print("Data saved")
+			print("Last 3 rows:")
+			for r in tail:
+				r_ = tuple(0 if x is None else x for x in r)
+				print("sequence=%d pressed=%3d expected=%3d delay_ms=%4d timestamp=%d" % r_)
 		print("Done")
 
+class Analysis:
+	def __init__(self, n=100000):
+		df = pd.read_sql_query('SELECT * FROM keystrokes LIMIT %d' % n, the_sqc)
+		df['delay'] = df['delay_ms']
+		df['typo'] = df['pressed'] != df['expected']
+		df['ch'] = df['expected'].apply(lambda x: chr(x))
+		df = df.drop(['delay_ms'], axis=1)
+		df = df.sort_values(by='sequence')
+		self.df = df
+
+		# ignore afk inputs
+		df2 = df[df['delay'] < 5000]
+
+		g = df2.groupby(by='ch')
+		std = g.std()
+		mean = g.mean()
+		mean = mean.drop(['pressed', 'expected', 'timestamp', 'sequence'], axis=1)
+		mean['delay_std'] = std['delay']
+		mean['typo_std'] = std['typo']
+		mean['samples'] = g.count()['typo']
+
+		# drop undersampled keys
+		mean = mean[mean['samples'] >= 5]
+
+		self.mean = mean
+		self.by_error = mean.sort_values(by='typo', ascending=False)
+		self.by_delay = mean.sort_values(by='delay', ascending=False)
+
+		self.seq = {}
+		self.mseq = {}
+		self.mseq_by_error = {}
+		self.mseq_by_delay = {}
+
+	def gen_seq(self, n=2):
+		rows = self.df.shape[0]
+		seq = pd.DataFrame()
+		seq['str'] = [''] * rows
+		seq['delay'] = [0.0] * rows
+		seq['typo'] = [False] * rows
+		seq['ok'] = [True] * rows
+
+		for i in range(n):
+			sh = self.df.shift(i)
+			seq['str'] = sh['ch'].str.cat(seq['str'])
+			seq['typo'] |= sh['typo']
+			seq['delay'] += sh['delay']
+
+			# key presses separated by more than 30s aren't part of same session
+			# and thus sequences containing such breaks are invalid
+			seq['ok'] &= abs(self.df['timestamp'] - sh['timestamp']) < 30
+
+			# repeats>=3 are just annoying
+
+		# drop invalid sequences
+		seq = seq[seq['ok']].drop(['ok'], axis=1)
+		seq = seq.dropna()
+		seq = seq[seq['delay'] < 10000]
+		seq = seq[seq['str'].str.contains(' ') ^ True]
+
+		g = seq.groupby(by='str')
+		count, std = g.count(), g.std()
+		mseq = g.sum()
+		mseq['delay'] /= count['delay']
+		mseq['typo'] /= count['typo']
+		mseq['delay_std'] = std['delay']
+		mseq['typo_std'] = std['typo']
+		mseq['samples'] = count['delay']
+
+		# filter out undersampled sequences
+		#mseq = mseq[mseq['samples'] >= 5]
+
+		self.mseq[n] = mseq
+		self.mseq_by_delay[n] = mseq.sort_values(by='delay', ascending=False)
+		self.mseq_by_error[n] = mseq.sort_values(by='typo', ascending=False)
+	
+	def print_misc(self):
+		print("\nKeys most often typo:")
+		print(self.by_error.head(5))
+		print("\nKeys that are slow:")
+		print(self.by_delay.head(5))
+	
+	def print_seq(self,i):
+		print("\nSequences (%d) most often typo:" % i)
+		print(self.mseq_by_error[i].head(5))
+		print("\nSequences (%d) that are slow:" % i)
+		print(self.mseq_by_delay[i].head(5))
+
+def analyze(args):
+	print("Pandas:", pd.__version__)
+	print("Analyzing...")
+	seqs = [2, 3]
+	a = Analysis(100000)
+	for n in seqs:
+		a.gen_seq(n)
+	a.print_misc()
+	for n in seqs:
+		a.print_seq(n)
+
+def main():
+
+	p = argparse.ArgumentParser()
+	p.add_argument("-c", "--cont", help="continue on mistakes", action="store_true")
+	p.add_argument("-d", "--db", nargs=1, help='sqlite3 database (or "none")', default=['keystrokes.db'])
+	p.add_argument("-p", "--page-size", nargs=1, help='characters per page', type=int, default=[300])
+	p.add_argument("-w", "--wordlist", nargs='+', help='wordlist file', default=['words/ascii_english'])
+	p.add_argument("-g", "--gen", help='enable sequence generator', action="store_true")
+	p.add_argument("mode", default="practice", choices=('practice', 'analyze'), nargs='?')
+	args = p.parse_args()
+
+	if args.db[0] != "none":
+		global the_sqc
+		the_sqc = sqlite3.connect(args.db[0])
+		the_sqc.execute('CREATE TABLE IF NOT EXISTS keystrokes' +
+			' ( sequence integer primary key,' +
+			' pressed integer,' + # keycode
+			' expected integer,' + # keycode
+			' delay_ms integer,' +
+			' timestamp integer );') # unix timestamp (seconds)
+		the_sqc.commit()
+	
+	if args.mode == 'practice':
+		cu.wrapper(lambda stdscr: practice(stdscr, args))
+	elif args.mode == 'analyze':
+		analyze(args)
+
 if __name__=="__main__":
-	cu.wrapper(main)
+	main()
 
