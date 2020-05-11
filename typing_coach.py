@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 import pandas as pd
 import numpy as np
 from numpy.random import choice
@@ -8,6 +8,7 @@ import textwrap
 from time import monotonic, time
 import argparse
 import locale
+from typing_analysis import Analysis, read_wordlist
 
 ATT=lambda:None
 the_sqc=None
@@ -15,6 +16,21 @@ the_wordlist=None
 
 keys_lh = 'qwertasdfgzxcvb<>!@#$%^\t 123456`~'
 keys_rh = 'yuiop[]hjkl;\'\\bnm,./7890-^&*()_= ~\r'
+#word_separators = None #tuple(' .,-:;/\\+=*()[]{}@%#&^!$<>')
+word_separators = [
+	' ',
+	', ', '. ', '.', "' ",
+	': ', '; ', '-', '_',
+	'=', '+', '/', '\\',
+	'|', '? ',
+]
+word_separators_p = [
+	20,
+	2, 2, 2, 2,
+	2, 2, 2, 2,
+	1, 1, 1, 1,
+	1, 1,
+]
 
 def get_timestamp():
 	return int(time())
@@ -22,17 +38,19 @@ def get_timestamp():
 def series_to_text(word_series, max_ch):
 	out=""
 	x=0
-	sep=tuple(' .,-:;/\\+=*()[]{}@%#&^!$<>')
-	prb=tuple(1/(x*x*1.4 + 1) for x in range(len(sep)))
+	sep=word_separators
+	#prb=tuple(1/(x*x*1.4 + 1) for x in range(len(sep)))
+	prb=word_separators_p
 	prb_total=sum(prb)
 	prb=tuple(x/prb_total for x in prb)
 	for index, word in word_series.items():
-		s = choice(sep, 1, p=prb)[0]
+		s = choice(sep, p=prb)
+		#s = choice(sep)
 		w = s + str(word).strip()
 		x += len(w)
+		out += w
 		if x > max_ch:
 			break
-		out += w
 	if len(out)==0:
 		raise Exception('empty word series')
 	return out[1:] + "."
@@ -40,24 +58,42 @@ def series_to_text(word_series, max_ch):
 class Wordlist:
 	def __init__(self):
 		self.df = pd.DataFrame()
+		self.deck_size = 10
+		self.max_chars = 300
+		self.auto_seqs = False
+		self.auto_words = False
 	def append_lines(self, path):
-		df = pd.read_table(path,
-			skipinitialspace = True,
-			sep = '\0',
-			names = ['word'],
-			dtype = str,
-			engine = 'c',
-			memory_map = True,
-			encoding = 'utf-8')
-		df.word = df.word.str.strip()
-		self.df = self.df.append(df)
+		self.df = read_wordlist(path)
 	def append_file(self, path):
 		with open(path,"r") as f:
 			self.df = self.df.append({'word':f.read()}, ignore_index=True)
-	def get(self, max_chars=300):
-		if self.df['word'].size == 1:
-			return self.df['word'][0]
-		s=series_to_text(self.df['word'].sample(n=max_chars/3, replace=True), max_chars)
+	def get(self):
+		limit = self.max_chars
+		deck = self.df.sample(min(len(self.df), self.deck_size))
+		d0=deck.copy()
+		tw=None
+		ts=None
+		if self.auto_seqs or self.auto_words:
+			a = Analysis(limit=500, sqc=the_sqc)
+			if self.auto_seqs:
+				ts = a.training_sequences(limit=limit//3)
+				deck = deck.append(ts[['word']])
+			if self.auto_words:
+				tw = a.training_words(self.df, limit=limit//3)
+				deck = deck.append(tw[['word']])
+			if len(deck) > self.deck_size:
+				deck = deck.sample(self.deck_size)
+		if False:
+			with open('deck','w') as f:
+				print('old deck', file=f)
+				print(d0, file=f)
+				print('\nfinal deck', file=f)
+				print(deck, file=f)
+				print('\ntraining words', file=f)
+				print(tw, file=f)
+				print('\ntraining sequences', file=f)
+				print(ts, file=f)
+		s = series_to_text(deck.sample(n=limit, replace=True)['word'], limit)
 		return s
 
 class ScrollingWindow:
@@ -136,7 +172,6 @@ class InputBox:
 			return
 		if key in (cu.KEY_NPAGE, cu.KEY_PPAGE):
 			self.next_words()
-			self.t_begin = None
 			return
 		ch_exp = self.text[self.caret]
 		key_exp = ord(ch_exp)
@@ -179,6 +214,7 @@ class InputBox:
 		self.caret = 0
 		self.data_buffer = []
 		self.set_text(the_wordlist.get())
+		self.t_begin = None # pause
 	def paint(self):
 		self.swin.center_at(self.caret)
 		self.swin.paint()
@@ -204,7 +240,6 @@ def practice(stdscr, args):
 		setattr(ATT, 'cursor', cu.color_pair(4))
 		setattr(ATT, 'cursor_mistake', cu.color_pair(5))
 		setattr(ATT, 'marker', cu.color_pair(6))
-		input_box.max_chars = args.page_size[0]
 		input_box.win_init()
 		input_box.next_words()
 		#input_box.win.nodelay(True)
@@ -225,6 +260,8 @@ def practice(stdscr, args):
 				wpm = cpm / 1700 * 378
 				stdscr.addstr(0, 0, "cpm: %5.0f    wpm : %4.0f" % (cpm,wpm))
 				ks = 'PAUSE' if input_box.t_begin is None else str(input_box.last_key)
+				if input_box.last_key is not None:
+					ks += ' ' + chr(input_box.last_key)
 				stdscr.addstr(1, 0, "%-30s" % ks)
 				stdscr.noutrefresh()
 				input_box.paint()
@@ -257,20 +294,29 @@ def practice(stdscr, args):
 		print("Done")
 
 def main():
+	global word_separators
+	global the_sqc
+	global the_wordlist
+
 	locale.setlocale(locale.LC_ALL, '')
 
 	p = argparse.ArgumentParser()
 	p.add_argument("-d", "--db", nargs=1, help='sqlite3 database (or "none")', default=['keystrokes.db'])
-	p.add_argument("-p", "--page-size", nargs=1, help='characters per page', type=int, default=[300])
+	p.add_argument("-p", "--page-size", nargs=1, help='characters per page', type=int, default=[100])
 	p.add_argument("-w", "--wordlist", nargs='+', help='wordlist file(s)', default=[])
+	p.add_argument("-k", "--deck-size", nargs=1, help='training deck size', type=int, default=[10])
 	p.add_argument("-s", "--source", nargs='+', help='utf8 source file(s)', default=[])
+	p.add_argument("-g", "--gen-seqs", help='make training sequences', action='store_const', const=True, default=False)
+	p.add_argument("-G", "--gen-words", help='choose training words', action='store_const', const=True, default=False)
+	p.add_argument("-S", "--separators", nargs='+', help='word separators (space)', default=word_separators)
 	args = p.parse_args()
+
+	word_separators = tuple(args.separators)
 
 	if len(args.wordlist)==0 and len(args.source)==0:
 		args.wordlist = ['words/ascii_english']
 
 	if args.db[0] != "none":
-		global the_sqc
 		the_sqc = sqlite3.connect(args.db[0])
 		the_sqc.execute('CREATE TABLE IF NOT EXISTS keystrokes' +
 			' ( sequence integer primary key,' +
@@ -280,12 +326,17 @@ def main():
 			' timestamp integer );') # unix timestamp (seconds)
 		the_sqc.commit()
 
-	global the_wordlist
 	the_wordlist = Wordlist()
+	the_wordlist.deck_size = args.deck_size[0]
+	the_wordlist.max_chars = args.page_size[0]
+	the_wordlist.auto_seqs = args.gen_seqs == True
+	the_wordlist.auto_words = args.gen_words == True
 	for path in args.wordlist:
 		the_wordlist.append_lines(path)
 	for path in args.source:
 		the_wordlist.append_file(path)
+	
+	print("Loaded", len(the_wordlist.df), "wordlist entries")
 	
 	cu.wrapper(lambda stdscr: practice(stdscr, args))
 
