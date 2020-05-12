@@ -9,13 +9,13 @@ from time import monotonic, time
 import argparse
 import locale
 from typing_analysis import Analysis, read_wordlist
+import os
 
 ATT=lambda:None
 the_sqc=None
 the_wordlist=None
+bench_mode=False
 
-keys_lh = 'qwertasdfgzxcvb<>!@#$%^\t 123456`~'
-keys_rh = 'yuiop[]hjkl;\'\\bnm,./7890-^&*()_= ~\r'
 #word_separators = None #tuple(' .,-:;/\\+=*()[]{}@%#&^!$<>')
 word_separators = [
 	' ',
@@ -49,7 +49,7 @@ def series_to_text(word_series, max_ch):
 		w = s + str(word).strip()
 		x += len(w)
 		out += w
-		if x > max_ch:
+		if max_ch > 0 and x > max_ch:
 			break
 	if len(out)==0:
 		raise Exception('empty word series')
@@ -68,32 +68,40 @@ class Wordlist:
 		with open(path,"r") as f:
 			self.df = self.df.append({'word':f.read()}, ignore_index=True)
 	def get(self):
+		if bench_mode:
+			limit=500
+			return series_to_text(self.df['word'].sample(limit//3), limit)
 		limit = self.max_chars
 		deck = self.df.sample(min(len(self.df), self.deck_size))
 		d0=deck.copy()
 		tw=None
 		ts=None
 		if self.auto_seqs or self.auto_words:
-			a = Analysis(limit=500, sqc=the_sqc)
+			deck = deck[:self.deck_size//2]
+			a = Analysis(limit=5000, sqc=the_sqc)
 			if self.auto_seqs:
 				ts = a.training_sequences(limit=limit//3)
-				deck = deck.append(ts[['word']])
+				deck = deck.append(ts)
 			if self.auto_words:
 				tw = a.training_words(self.df, limit=limit//3)
-				deck = deck.append(tw[['word']])
+				deck = deck.append(tw)
 			if len(deck) > self.deck_size:
 				deck = deck.sample(self.deck_size)
-		if False:
-			with open('deck','w') as f:
-				print('old deck', file=f)
-				print(d0, file=f)
-				print('\nfinal deck', file=f)
-				print(deck, file=f)
-				print('\ntraining words', file=f)
-				print(tw, file=f)
-				print('\ntraining sequences', file=f)
-				print(ts, file=f)
-		s = series_to_text(deck.sample(n=limit, replace=True)['word'], limit)
+			if os.path.isdir('dump'):
+				d0.to_csv('dump/deck0', index=False)
+				# rows with a lot of NaN are the uniformly picked words
+				deck.to_csv('dump/deck', index=False)
+				if tw is not None:
+					tw.sort_values('delay', ascending=False).to_csv('dump/gen_words', index=False)
+				if ts is not None:
+					ts.sort_values('delay', ascending=False).to_csv('dump/gen_seq', index=False)
+				with open('dump/slow','w') as f:
+					print(a.slow_keys().head(20), file=f)
+					print(a.slow_seq(2).head(20), file=f)
+					print(a.slow_seq(3).head(20), file=f)
+					print(a.slow_seq(4).head(20), file=f)
+		deck = deck.sample(n=limit//3, replace=limit//3 > len(deck))
+		s = series_to_text(deck['word'], limit)
 		return s
 
 class ScrollingWindow:
@@ -151,6 +159,7 @@ class InputBox:
 		self.delay_buffer = [] # used for typing speed calculation
 		self.delay_buffer_limit = 80
 		self.last_key = None   # show key name for testing
+		self.done = False
 	def win_init(self):
 		height, width = 3, 50
 		y, x = 2, 5
@@ -215,6 +224,8 @@ class InputBox:
 		self.data_buffer = []
 		self.set_text(the_wordlist.get())
 		self.t_begin = None # pause
+		if bench_mode:
+			self.done = True
 	def paint(self):
 		self.swin.center_at(self.caret)
 		self.swin.paint()
@@ -246,8 +257,12 @@ def practice(stdscr, args):
 
 		redraw_delay = 0.2
 		redraw_t = monotonic() + redraw_delay
+		input_box.done = False
 
-		while True:
+		if bench_mode:
+			input_box.delay_buffer_limit = 1000000
+
+		while not input_box.done:
 
 			if input_box.swin.win.nodelay is True:
 				should_redraw = monotonic() >= redraw_t
@@ -293,28 +308,28 @@ def practice(stdscr, args):
 				print("sequence=%d pressed=%3d expected=%3d delay_ms=%4d timestamp=%d" % r_)
 		print("Done")
 
+		if bench_mode:
+			print("WPM: ", wpm)
+
 def main():
 	global word_separators
 	global the_sqc
 	global the_wordlist
+	global bench_mode
 
 	locale.setlocale(locale.LC_ALL, '')
 
 	p = argparse.ArgumentParser()
 	p.add_argument("-d", "--db", nargs=1, help='sqlite3 database (or "none")', default=['keystrokes.db'])
-	p.add_argument("-p", "--page-size", nargs=1, help='characters per page', type=int, default=[100])
+	p.add_argument("-p", "--page-size", nargs=1, help='characters per page', type=int, default=[300])
 	p.add_argument("-w", "--wordlist", nargs='+', help='wordlist file(s)', default=[])
-	p.add_argument("-k", "--deck-size", nargs=1, help='training deck size', type=int, default=[10])
+	p.add_argument("-k", "--deck-size", nargs=1, help='training deck size', type=int, default=[200])
 	p.add_argument("-s", "--source", nargs='+', help='utf8 source file(s)', default=[])
-	p.add_argument("-g", "--gen-seqs", help='make training sequences', action='store_const', const=True, default=False)
-	p.add_argument("-G", "--gen-words", help='choose training words', action='store_const', const=True, default=False)
+	p.add_argument("-g", "--gen-seqs", help='make training sequences', action='store_true')
+	p.add_argument("-G", "--gen-words", help='choose training words', action='store_true')
 	p.add_argument("-S", "--separators", nargs='+', help='word separators (space)', default=word_separators)
+	p.add_argument("-b", "--bench", help='benchmark your typing', action='store_true')
 	args = p.parse_args()
-
-	word_separators = tuple(args.separators)
-
-	if len(args.wordlist)==0 and len(args.source)==0:
-		args.wordlist = ['words/ascii_english']
 
 	if args.db[0] != "none":
 		the_sqc = sqlite3.connect(args.db[0])
@@ -326,11 +341,17 @@ def main():
 			' timestamp integer );') # unix timestamp (seconds)
 		the_sqc.commit()
 
+	bench_mode = args.bench is True
+	word_separators = tuple(args.separators)
+
+	if len(args.wordlist)==0 and len(args.source)==0:
+		args.wordlist = ['words/ascii_english']
+	
 	the_wordlist = Wordlist()
 	the_wordlist.deck_size = args.deck_size[0]
 	the_wordlist.max_chars = args.page_size[0]
-	the_wordlist.auto_seqs = args.gen_seqs == True
-	the_wordlist.auto_words = args.gen_words == True
+	the_wordlist.auto_seqs = args.gen_seqs is True
+	the_wordlist.auto_words = args.gen_words is True
 	for path in args.wordlist:
 		the_wordlist.append_lines(path)
 	for path in args.source:

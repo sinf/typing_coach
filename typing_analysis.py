@@ -7,6 +7,40 @@ import os
 
 afk_timeout = 10000
 
+def weighted_average(df, by, data, weight, epsilon=1e-6):
+	df.sort_values(by, inplace=True)
+	df['_data_x_weight'] = df[data] * df[weight]
+	df['_weight_nonzero'] = abs(df[weight]) > epsilon
+	g = df.groupby(by)
+	W = g[weight].sum()
+	avg_out = g['_data_x_weight'].sum() / W
+	# then figure out the variance
+	n = g['_data_x_weight'].count()
+	m = g['_weight_nonzero'].sum()
+	# get mean for each input row
+	avg = g['_data_x_weight'].transform('sum') / g[weight].transform('sum')
+	df['_weight_x_var'] = df[weight] * (df[data] - avg)**2
+	g = df.groupby(by)
+	var = g['_weight_x_var'].sum() / ((m-1)/m * W)
+	idx = g['_weight_x_var'].count().index
+	del df['_data_x_weight'], df['_weight_x_var']
+	return idx, avg_out, var, n
+
+def result_cleanup(df, min_samples=10, noise_reject=0.1):
+	word_len = min(df.index.str.len()) if len(df)>0 else 0
+	# drop undersampled sequences
+	df = df[df['samples'] >= min_samples]
+	# drop all uppercase characters (no shit: modifier key always adds time)
+	df = df[~df.index.str.isupper()]
+	if word_len > 1:
+		# drop sequences consiting of just one character
+		df = df[df.index != df.index.str.len() * df.index.str.slice(0,1)]
+	# drop the most highly varying rows
+	df = df.nsmallest(max(10, int(len(df)*(1-noise_reject))), ['delay_std'])
+	# slowest first
+	df = df.sort_values('delay', ascending=False)
+	return df
+
 def read_wordlist(path):
 	pq=path+'.pq'
 	if os.path.exists(pq) and os.path.getctime(path) <= os.path.getctime(pq):
@@ -33,16 +67,19 @@ def get_all_sequences(word, n):
 
 def drop_spaced(df):
 	for c in ' \t\n!@#$%^*.,:;()[]{}<>=':
-		df = df[df.index.to_series().str.contains(c, regex=False) ^ True]
+		df = df[~df.index.to_series().str.contains(c, regex=False)]
 	return df
 
 def fix_delay(df):
-	max_val = max(df['delay'])
-	max_std = max(df['delay_std'])
-	df['delay'].fillna(value=max_val, inplace=True)
-	df['delay'][df['delay']<0] = max_val
-	df['delay_std'].fillna(value=max_std, inplace=True)
-	df['delay_std'][df['delay_std']<0] = max_std
+	for c in ('delay', 'delay_std', 'delay_var'):
+		if c in df:
+			# any key or sequence that only has 1 sample will have 0/nan/inf std
+			val = df[c].median()
+			if val <= 0 or val == np.inf or not (val == val):
+				# median is bad too (just 1 sample of 1 unique sequence?)
+				val = 5555
+			df[c].fillna(value=val, inplace=True)
+			df[c].mask(df[c]<=0, val, inplace=True)
 	return df
 
 class Analysis:
@@ -63,6 +100,9 @@ class Analysis:
 
 		if sqc_tmp is not None:
 			sqc_tmp.close()
+
+		if len(df) == 0:
+			raise Exception("database has no data")
 
 		# rename the fields
 		df['delay'] = df['delay_ms']
@@ -95,6 +135,9 @@ class Analysis:
 		if n in self.seq:
 			return
 
+		t0 = max(self.df['timestamp']) + 0.001
+		age = ((t0 - self.df['timestamp']) * (1.0/3600)).shift(n)
+
 		seq = pd.DataFrame()
 		seq['word'] = self.df['ch']
 		seq['delay'] = self.df['delay']
@@ -105,7 +148,7 @@ class Analysis:
 			seq['word'] = seq['word'].str.cat(next_row['ch'])
 			seq['delay'] += next_row['delay']
 
-			# Only consider key presses with adjacent sequence counter
+			# Only consider key presses with adjacent sequence counters
 			seq['ok'] &= (next_row['sequence'] - self.df['sequence']) == i
 
 		# drop invalid sequences
@@ -113,25 +156,29 @@ class Analysis:
 		seq = seq.drop(['ok'], axis=1)
 		seq = seq.dropna()
 
-		g = seq.groupby(by='word')
 		# delay per character (so sequences of different length are comparable)
-		delay = g.mean()['delay'] / n
-		std = g.std()['delay'] / n
+		seq['delay'] /= n
+		seq['weight'] = 1/(age*age)
+
+		idx, delay, delay_var, samples = \
+			weighted_average(seq, 'word', 'delay', 'weight')
+
+		delay_std = delay_var.pow(0.5)
 
 		mseq = pd.DataFrame({
 			'delay': delay,
-			'delay_std' : std,
-			'samples' : g.count()['delay']},
-			index=delay.index.to_series())
+			'delay_var' : delay_var,
+			'delay_std' : delay_std,
+			'samples' : samples,
+			'word' : idx},
+			index=idx)
 
 		mseq = fix_delay(mseq)
 		mseq.dropna()
 
-		mseq['word'] = mseq.index.to_series()
-
 		self.seq[n] = seq
 		self.mseq[n] = mseq.sort_values(by='delay', ascending=False)
-		self.mseqd[n] = dict(zip(mseq.index, zip(mseq.delay, mseq.delay_std, mseq.samples)))
+		self.mseqd[n] = dict(zip(mseq.index, zip(mseq.delay, mseq.delay_var, mseq.samples)))
 	
 	def get_seq(self, n):
 		self.gen_seq(n)
@@ -140,34 +187,40 @@ class Analysis:
 	def slow_keys(self):
 		k = self.mean
 		k = drop_spaced(k)
+		k = result_cleanup(k, min_samples=10, noise_reject=0.01)
 		return k
 	
 	def slow_seq(self, n):
 		s = self.get_seq(n)
 		s = drop_spaced(s)
-		s = s[s['samples'] > 1]
+		s = result_cleanup(s, min_samples=10, noise_reject=0.05)
 		return s
+	
+	def wpm(self, n=2000):
+		rows = self.df.nlargest(n, 'sequence')
+		cps = 1000 * len(rows) / sum(rows['delay'])
+		cpm = cps * 60
+		wpm = cpm / 5
+		return wpm
 	
 	def print_info(self):
 		print("Keystroke rows:", self.df.index.size)
+		print("WPM of last 2000 keys:", self.wpm(2000))
 		print("\nSlow keys")
 		print(self.slow_keys().head(10))
 		for n in self.mseq.keys():
 			print("\nSlow sequences of length", n)
-			print(self.slow_seq(n).head(5))
+			print(self.slow_seq(n).drop(['delay_var'],axis=1).head(15))
 			print()
 	
-	def predict_word_delay(self, word, seq_max=11):
+	def predict_word_delay(self, word, seq_min=3, seq_max=10):
 		bad = (np.nan, np.nan, 0)
-
 		if word is None:
 			return bad
-
-		seq_len = list(range(3,min(len(word),seq_max)))
+		seq_len = list(range(seq_min,min(len(word),seq_max+1)))
 		mean = []
-		std = []
+		var = []
 		samples = 0
-
 		for n in seq_len:
 			self.gen_seq(n)
 			d = self.mseqd[n]
@@ -175,27 +228,35 @@ class Analysis:
 				if sq in d:
 					row = d[sq]
 					mean += [row[0]]
-					std += [row[1]]
+					var += [row[1]]
 					samples += row[2]
-
 		if len(mean) == 0:
+			if seq_min > 1:
+				# no data for relevant sequences exist
+				# so try again with single characters
+				return self.predict_word_delay(word, 1, 2)
+			# absolutely no data at all
 			return bad
-
 		mean = np.array(mean)
-		std = np.array(std)
-		var = std * std
-		var_rcp = np.reciprocal(var)
-		delay = np.average(mean, weights=var_rcp)
-		delay_std = np.sqrt(1/sum(var_rcp))
+		mean = np.clip(mean, 0, afk_timeout)
+		with np.errstate(divide='ignore'):
+			var_rcp = np.reciprocal(var)
+		if abs(sum(var_rcp)) > 1e-5:
+			delay = np.average(mean, weights=var_rcp)
+			delay_std = np.sqrt(1/sum(var_rcp))
+		else:
+			mean = np.mean(mean)
+			delay = mean
+			delay_std = np.nanstd(mean)
 		return delay, delay_std, samples
 	
 	def predict_wordlist_delay(self, wordlist):
-		assert(type(wordlist) is pd.Series)
+		assert(type(wordlist) is not pd.DataFrame)
 		data=[]
-		for index, word in wordlist.items():
+		for word in wordlist:
 			d,s,n = self.predict_word_delay(word)
 			data += [[word,d,s,n]]
-		df = pd.DataFrame(data, columns=['word','delay','delay_std', 'nseq'])
+		df = pd.DataFrame(data=data, columns=['word','delay','delay_std', 'nseq'])
 		df = fix_delay(df)
 		df = df.dropna()
 		df['total'] = df['delay'].to_numpy() * df['word'].str.len()
@@ -204,7 +265,7 @@ class Analysis:
 	
 	def training_words(self, wordlist_df, limit=50):
 		assert(type(wordlist_df) is pd.DataFrame)
-		max_candidates = limit*10
+		max_candidates = limit*50
 		wl = wordlist_df
 		if len(wl) > max_candidates:
 			wl = wl.sample(max_candidates)
@@ -225,7 +286,7 @@ class Analysis:
 			df = df.sample(limit, weights=df['delay'])
 		return df
 
-if __name__=="__main__":
+def main():
 	p = argparse.ArgumentParser()
 	p.add_argument("-d", "--db", nargs=1, help='sqlite3 database', default=['keystrokes.db'])
 	p.add_argument("-n", "--limit", nargs=1, help='characters to analyze', type=int, default=[2000])
@@ -236,6 +297,11 @@ if __name__=="__main__":
 	args = p.parse_args()
 
 	print("Pandas:", pd.__version__)
+	print("sqlite3:", sqlite3.version)
+
+	if not os.path.isfile(args.db[0]):
+		print("File", args.db[0], "doesn't exist. use typing_coach.py to create it")
+		return
 
 	wordlist=pd.DataFrame()
 	for path in args.wordlist:
@@ -270,4 +336,7 @@ if __name__=="__main__":
 			print(df)
 		else:
 			df.to_csv(path, columns=[], header=False, index=True)
+	
+if __name__=="__main__":
+	main()
 
