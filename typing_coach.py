@@ -62,12 +62,19 @@ class Wordlist:
 		self.max_chars = 300
 		self.auto_seqs = False
 		self.auto_words = False
+		self.src = ""
 	def append_lines(self, path):
 		self.df = read_wordlist(path)
 	def append_file(self, path):
 		with open(path,"r") as f:
-			self.df = self.df.append({'word':f.read()}, ignore_index=True)
+			s = f.read().strip()
+			s = s.replace('\n', ' ')
+			s = s.replace('\t', ' ')
+			s = s.replace('\v', ' ')
+			self.src += s + '\n'
 	def get(self):
+		if len(self.src) > 0:
+			return self.src
 		if bench_mode:
 			limit=500
 			return series_to_text(self.df['word'].sample(limit//3), limit)
@@ -123,6 +130,8 @@ class ScrollingWindow:
 			.replace('\v', '↓')
 		self.rows = textwrap.wrap(text, self.n_cols(), drop_whitespace=False)
 		self.attr = [a] * len(text)
+	def bottom(self):
+		return self.win.getyx()[0] + self.win.getmaxyx()[0]
 	def find_row(self, target_pos):
 		row_nr=0
 		row_end=0
@@ -139,17 +148,24 @@ class ScrollingWindow:
 		self.top_row = r
 	def paint(self):
 		pos = sum(len(r) for r in self.rows[:self.top_row])
-		y=0
+		visible_rows = self.rows[self.top_row:(self.top_row+self.n_rows())]
 		self.win.clear()
-		for row in self.rows[self.top_row:]:
-			y += 1
-			if y > self.n_rows():
-				break
-			for j in range(len(row)):
-				c = row[j]
-				self.win.addch(y, 1+j, c, self.attr[pos])
-				pos += 1
 		self.win.border()
+		y=1
+		for row in visible_rows:
+			self.win.move(y,1)
+			att=self.attr[pos]
+			buf=''
+			for i in range(len(row)):
+				if self.attr[pos] != att:
+					self.win.addstr(buf, att)
+					buf=''
+				att = self.attr[pos]
+				buf += row[i]
+				pos += 1
+			if len(buf):
+				self.win.addstr(buf, att)
+			y += 1
 		self.win.noutrefresh()
 
 class InputBox:
@@ -229,11 +245,11 @@ class InputBox:
 	def paint(self):
 		self.swin.center_at(self.caret)
 		self.swin.paint()
-	
 
 def practice(stdscr, args):
 
 	input_box = InputBox()
+	wpm = 0
 
 	try:
 		cu.cbreak()
@@ -273,11 +289,24 @@ def practice(stdscr, args):
 			if should_redraw:
 				cpm = input_box.cpm()
 				wpm = cpm / 1700 * 378
+				#stdscr.clear()
 				stdscr.addstr(0, 0, "cpm: %5.0f    wpm : %4.0f" % (cpm,wpm))
 				ks = 'PAUSE' if input_box.t_begin is None else str(input_box.last_key)
 				if input_box.last_key is not None:
 					ks += ' ' + chr(input_box.last_key)
 				stdscr.addstr(1, 0, "%-30s" % ks)
+
+				y = input_box.swin.bottom() + 2
+				stdscr.move(y, 0)
+
+				if bench_mode:
+					stdscr.addstr("(!) BENCHMARK MODE\n")
+
+				stdscr.addstr("db: {}\n".format(args.db[0]))
+
+				for s in args.source:
+					stdscr.addstr("src: {}\n".format(s.strip()))
+
 				stdscr.noutrefresh()
 				input_box.paint()
 				cu.doupdate()
@@ -317,7 +346,7 @@ def main():
 	global the_wordlist
 	global bench_mode
 
-	locale.setlocale(locale.LC_ALL, '')
+	locale.setlocale(locale.LC_ALL, 'C.UTF-8')
 
 	p = argparse.ArgumentParser()
 	p.add_argument("-d", "--db", nargs=1, help='sqlite3 database (or "none")', default=['keystrokes.db'])
