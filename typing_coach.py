@@ -176,6 +176,13 @@ class InputBox:
 		self.delay_buffer_limit = 80
 		self.last_key = None   # show key name for testing
 		self.done = False
+		self.typing_counter = 0
+		if the_sqc is not None:
+			try:
+				cur = the_sqc.execute('SELECT COUNT(*) FROM keystrokes;')
+				self.typing_counter = cur.fetchone()[0]
+			except sqlite3.OperationalError:
+				pass
 	def win_init(self):
 		height, width = 3, 50
 		y, x = 2, 5
@@ -198,6 +205,7 @@ class InputBox:
 		if key in (cu.KEY_NPAGE, cu.KEY_PPAGE):
 			self.next_words()
 			return
+		self.typing_counter += 1
 		ch_exp = self.text[self.caret]
 		key_exp = ord(ch_exp)
 		mistake = ch != ch_exp
@@ -290,7 +298,7 @@ def practice(stdscr, args):
 				cpm = input_box.cpm()
 				wpm = cpm / 1700 * 378
 				#stdscr.clear()
-				stdscr.addstr(0, 0, "cpm: %5.0f    wpm : %4.0f" % (cpm,wpm))
+				stdscr.addstr(0, 0, "cpm: %5.0f  wpm : %4.0f  keystrokes : %08d" % (cpm,wpm,input_box.typing_counter))
 				ks = 'PAUSE' if input_box.t_begin is None else str(input_box.last_key)
 				if input_box.last_key is not None:
 					ks += ' ' + chr(input_box.last_key)
