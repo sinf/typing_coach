@@ -44,12 +44,17 @@ def series_to_text(word_series, max_ch):
 	prb_total=sum(prb)
 	prb=tuple(x/prb_total for x in prb)
 	for index, word in word_series.items():
-		s = choice(sep, p=prb)
-		#s = choice(sep)
-		w = s + str(word).strip()
-		x += len(w)
-		out += w
-		if max_ch > 0 and x > max_ch:
+		break2=False
+		for j in range(3):
+			s = choice(sep, p=prb)
+			#s = choice(sep)
+			w = s + str(word).strip()
+			x += len(w)
+			out += w
+			if max_ch > 0 and x > max_ch:
+				break2=True
+				break
+		if break2:
 			break
 	if len(out)==0:
 		raise Exception('empty word series')
