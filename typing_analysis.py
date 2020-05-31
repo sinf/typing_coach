@@ -54,8 +54,11 @@ def training_filter(df, limit=50, min_samples=10):
 
 def read_wordlist(path):
 	pq=path+'.pq'
-	if os.path.exists(pq) and os.path.getctime(path) <= os.path.getctime(pq):
-		return pd.read_parquet(pq, columns=['word'])
+	try:
+		if os.path.exists(pq) and os.path.getctime(path) <= os.path.getctime(pq):
+			return pd.read_parquet(pq, columns=['word'])
+	except:
+		pass
 	df = pd.read_table(path,
 		skipinitialspace = True,
 		sep = '\0',
@@ -65,8 +68,11 @@ def read_wordlist(path):
 		memory_map = True,
 		encoding = 'utf-8')
 	df.word = df.word.str.strip()
-	if not os.path.exists(pq):
-		df.to_parquet(pq, index=False, compression='gzip')
+	try:
+		if not os.path.exists(pq):
+			df.to_parquet(pq, index=False, compression='gzip')
+	except:
+		pass
 	return df
 
 def drop_spaced(df):
@@ -79,7 +85,7 @@ def concat_std(a, b):
 		'word':a['word'].str.cat(b['word']),
 		'delay':a['delay'] + b['delay'],
 		'delay_var':a['delay_var'] + b['delay_var'],
-		'samples':np.fmin(a['samples'].to_numpy(), b['samples'].to_numpy())
+		'samples':np.fmin(a['samples'].values, b['samples'].values)
 	})
 	c['delay_std'] = c['delay_var'].pow(0.5)
 	return c
@@ -285,8 +291,8 @@ class Analysis:
 		df = pd.DataFrame(data=data, columns=['word','delay','delay_std', 'samples'])
 		df = fix_delay(df)
 		df = df.dropna()
-		df['total'] = df['delay'].to_numpy() * df['word'].str.len()
-		df['total_std'] = df['delay_std'].to_numpy() * df['word'].str.len()
+		df['total'] = df['delay'].values * df['word'].str.len()
+		df['total_std'] = df['delay_std'].values * df['word'].str.len()
 		return df
 	
 	def training_words(self, wordlist_df, limit=50):
