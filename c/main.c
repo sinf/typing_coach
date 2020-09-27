@@ -10,8 +10,6 @@
 #include "wordlist.h"
 #include "win.h"
 
-#define EXE_NAME "typing_c"
-
 Wordlist *the_wordlist = NULL;
 char *wordlist_path = "./wordlist";
 static int test_quit = 0;
@@ -28,13 +26,15 @@ void parse_args(int argc, char **argv)
 			case 's': test_seq_ = 1; break;
 			case 'h':
 				puts(
+"\nTyping coach version " GIT_REF_STR "\n\n"
 "Usage: " EXE_NAME " [-d FILE] [-w FILE]\n\n"
 "Arguments\n"
 "  -h show this help text\n"
 "  -d set sqlite3 database file for keystrokes\n"
 "  -w set wordlist file (utf8, one word per line)\n"
 "  -q open/create database and quit\n"
-"  -s show slowest sequences and quit\n");
+"  -s show slowest sequences and quit\n"
+);
 				exit(1);
 			default: break;
 		}
