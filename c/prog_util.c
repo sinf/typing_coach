@@ -5,13 +5,32 @@
 #include <string.h>
 #include <errno.h>
 #include "prog_util.h"
+#include "timing.h"
+#include "sz_mult.h"
+
+int need_endwin = 0;
+
+void *Realloc(void *p, size_t n, size_t s, size_t z)
+{
+	size_t x = sz_mult(n, s, 0);
+	p = realloc(p, x);
+	if (!p) fail_oom();
+	return p;
+}
+
+void cleanup()
+{
+	db_close();
+	if (need_endwin)
+		endwin();
+}
 
 void fail(const char *msg1, ...)
 {
 	va_list ap;
 	va_start(ap, msg1);
-	endwin();
 	int e = errno;
+	cleanup();
 	const char *es = strerror(e);
 	fprintf(stderr, "Error: %d, %s\n", e, es);
 	vfprintf(stderr, msg1, ap);
@@ -21,7 +40,14 @@ void fail(const char *msg1, ...)
 
 void quit()
 {
-	endwin();
+	cleanup();
+	exit(1);
+}
+
+void quit_int(int sig)
+{
+	cleanup();
+	printf("Caught signal %d\n", sig);
 	exit(1);
 }
 

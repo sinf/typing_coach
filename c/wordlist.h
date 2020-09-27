@@ -20,12 +20,16 @@ struct Wordlist {
 typedef struct Word Word;
 typedef struct Wordlist Wordlist;
 
-char *strip(char *s);
 wchar_t *stripw(wchar_t *s);
+wchar_t *lower(wchar_t *s, size_t len);
+
 Wordlist *append_wordlist(Wordlist *, const wchar_t *word);
 Wordlist *read_wordlist(Wordlist *, const char *path);
 
 void get_words(Wordlist *, int count, int (*func)(Word *w));
+void get_words_s(Wordlist *, int count, int (*func)(Word *w), wchar_t seq[]);
+
+void shuffle_words(Word *array, size_t n);
 
 #endif
 
