@@ -151,8 +151,8 @@ size_t db_get_sequences(int num_ch, int sl_min, int sl_max, KSeq *out[1])
 	int mist_acc = 0;
 	int64_t prev_age=0, age=0, now=time(0);
 	size_t n_seqs = 0;
-	size_t out_alloc = 20000, grow = 20000;
-	*out = Realloc(NULL,out_alloc,sizeof *out,0);
+	size_t out_alloc = 0, grow = 20000;
+	*out = NULL;
 
 	e = sqlite3_bind_int(s, 1, num_ch);
 	if (e != SQLITE_OK) db_fail();
@@ -204,12 +204,12 @@ size_t db_get_sequences(int num_ch, int sl_min, int sl_max, KSeq *out[1])
 
 			// process sequences
 			for(int j=0; j<len; j++) {
+				int sl = 1+j;
 				int off = len-1-j;
-				int sl = j+1;
 				if (sl>=sl_min && sl<=sl_max) {
 					if (n_seqs == out_alloc) {
 						out_alloc += grow;
-						*out=Realloc(*out,out_alloc,sizeof *out,0);
+						*out=Realloc(*out,out_alloc,sizeof **out,0);
 					}
 
 					KSeq *se = *out + n_seqs;

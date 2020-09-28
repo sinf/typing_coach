@@ -224,6 +224,7 @@ void get_more_words()
 		get_words(the_wordlist, MAX_WORDS, add_word);
 	} else {
 		top_seq = sq;
+		// try all sequences starting from most expensive
 		for(i=0; i<n; i++) {
 			get_words_s(the_wordlist, 5, add_word_, sq[i].s);
 			if (next_count >= MAX_WORDS*2/3) {
