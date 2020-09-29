@@ -27,7 +27,9 @@ Wordlist *append_wordlist(Wordlist *, const wchar_t *word);
 Wordlist *read_wordlist(Wordlist *, const char *path);
 
 void get_words(Wordlist *, int count, int (*func)(Word *w));
-void get_words_s(Wordlist *, int count, int (*func)(Word *w), wchar_t seq[]);
+
+// return # of words containing sequence (seq) processed
+int get_words_s(Wordlist *, int count, int (*func)(Word *w), wchar_t seq[]);
 
 void shuffle_words(Word *array, size_t n);
 

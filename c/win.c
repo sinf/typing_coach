@@ -19,7 +19,8 @@
 
 #define BUFLEN 300
 
-static KSeq *top_seq=NULL;
+#define MAX_TOP_SEQ 20
+static KSeq top_seq[MAX_TOP_SEQ];
 static size_t top_seq_n=0;
 
 struct Buf {
@@ -175,16 +176,18 @@ void my_repaint()
 		y += 1;
 	}
 
-	if (top_seq) {
+	if (top_seq_n) {
+		mvprintw(++y, 0, "%8s %6s  %s", "Sequence", "Cost", "Samples");
 		for(size_t i=0; i<top_seq_n && y < rows; ++i) {
 			KSeq *s = top_seq + i;
-			++y;
-			move(y, 0);
+			move(++y, 0);
 			clrtoeol();
-			printw(" %*ls %6.2f  %d",
+			printw("%8.*ls %6.2f  %d",
 				s->len, s->s,
 				s->cost, s->samples);
 		}
+	} else {
+		mvprintw(y+1, 0, "Randow words");
 	}
 
 	refresh();
@@ -212,30 +215,30 @@ void get_more_words()
 	buf_clear();
 	db_trans_end();
 
-	if (top_seq) {
-		free(top_seq);
-		top_seq = NULL;
-		top_seq_n = 0;
-	}
+	top_seq_n = 0;
 	KSeq *sq;
-	size_t i,n=db_get_sequences(10000,1,MAX_SEQ,&sq);
-	if (n<100) {
-		free(sq);
+	size_t i,n=db_get_sequences(20000,1,MAX_SEQ,&sq);
+	if (n<20) {
 		get_words(the_wordlist, MAX_WORDS, add_word);
 	} else {
-		top_seq = sq;
 		// try all sequences starting from most expensive
 		for(i=0; i<n; i++) {
-			get_words_s(the_wordlist, 5, add_word_, sq[i].s);
-			if (next_count >= MAX_WORDS*2/3) {
-				top_seq_n = i;
-				break;
+			if (
+			get_words_s(the_wordlist, 5, add_word_, sq[i].s)
+			&& top_seq_n < MAX_TOP_SEQ) {
+				top_seq[top_seq_n++] = sq[i];
 			}
+			if (next_count >= MAX_WORDS*2/3)
+				break;
 		}
 		get_words(the_wordlist, MAX_WORDS, add_word_);
 		flush_next();
 	}
 
+	while(iswspace(cbuf.ch[cbuf.len-1]))
+		cbuf.len -= 1;
+
+	free(sq);
 	erase();
 	db_trans_begin();
 }

@@ -98,15 +98,17 @@ void get_words(Wordlist *wl, int count, int (*func)(Word *))
 	}
 }
 
-void get_words_s(Wordlist *wl, int count, int (*func)(Word *), wchar_t seq[])
+int get_words_s(Wordlist *wl, int count, int (*func)(Word *), wchar_t seq[])
 {
+	int added = 0;
 	lower(seq, MAX_SEQ);
 	shuffle_words(wl->words, wl->len);
 	for(size_t i=0; i<wl->len; ++i) {
 		if (wcsstr(wl->words[i].s, seq)) {
 			if (!func(wl->words+i)) break;
-			if (--count < 1) break;
+			if (++added == count) break;
 		}
 	}
+	return added;
 }
 

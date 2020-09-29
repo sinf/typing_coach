@@ -30,7 +30,7 @@ sql_get_recent[] =
 "SELECT sequence, pressed, expected, delay_ms, timestamp"
 " FROM keystrokes"
 " WHERE (delay_ms < 10000)"
-" ORDER BY sequence ASC LIMIT ?";
+" ORDER BY sequence DESC LIMIT ?";
 
 void db_fail()
 {
@@ -111,8 +111,10 @@ double calc_cost(int len, int delay[], int mist[], int age[])
 	for(int i=0; i<len; ++i)
 	{
 		// decay relevance with age
-		double a=(.1 + .9*pow(.999, age[i]+1));
-		cost = cost + a * (
+		double A=.01;
+		double a=(A + (1.0-A)*pow(.99, age[i]+1));
+		double k=(i==len-1 ? len : 1.0);
+		cost = cost + a * k * (
 			+ delay[i]*0.01
 			+ mist[i]*2.0
 		);
@@ -122,18 +124,14 @@ double calc_cost(int len, int delay[], int mist[], int age[])
 
 int cmp_seq_cost(const KSeq *a, const KSeq *b)
 {
-	if (a->len == b->len) {
-		if (a->cost == b->cost) {
-			// less samples first
-			if (a->samples != b->samples)
-				return a->samples < b->samples ? -1 : 1;
-			return 0;
-		}
-		// more expensive first
-		return a->cost < b->cost ? 1 : -1;
+	if (a->cost == b->cost) {
+		// less samples first
+		if (a->samples != b->samples)
+			return a->samples < b->samples ? -1 : 1;
+		return 0;
 	}
-	// longer first
-	return b->len - a->len;
+	// more expensive first
+	return a->cost < b->cost ? 1 : -1;
 }
 
 size_t db_get_sequences(int num_ch, int sl_min, int sl_max, KSeq *out[1])
@@ -172,7 +170,7 @@ size_t db_get_sequences(int num_ch, int sl_min, int sl_max, KSeq *out[1])
 		if (prev_age != 0)
 			age_dif = prev_age - age;
 
-		if (dif != 1 || iswspace(k0) || age_dif>60) {
+		if (dif != 1 || iswspace(k0) || age_dif>10) {
 			// sequence break
 			len = 0;
 			mist_acc = 0;
@@ -184,50 +182,43 @@ size_t db_get_sequences(int num_ch, int sl_min, int sl_max, KSeq *out[1])
 
 		if (k0 == k1) {
 			// correct keypress
-			int i;
 			const int N=MAX_SEQ;
-			if (len == N) {
-				memmove(keys, keys+1, N*sizeof *keys);
-				memmove(delay, delay+1, N*sizeof *delay);
-				memmove(mist, mist+1, N*sizeof *mist);
-				memmove(k_age, k_age+1, N*sizeof *k_age);
-				i = N - 1;
-			} else {
-				i = len;
-				len += 1;
-			}
-			keys[i] = k0;
-			delay[i] = kd;
-			mist[i] = mist_acc;
-			k_age[i] = age > INT_MAX ? INT_MAX : age;
+			memmove(keys+1, keys, N*sizeof *keys);
+			memmove(delay+1, delay, N*sizeof *delay);
+			memmove(mist+1, mist, N*sizeof *mist);
+			memmove(k_age+1, k_age, N*sizeof *k_age);
+			keys[0] = k0;
+			delay[0] = kd;
+			mist[0] = mist_acc;
+			k_age[0] = age > INT_MAX ? INT_MAX : age;
 			mist_acc = 0;
+			
+			if (len < MAX_SEQ)
+				len += 1;
 
 			// process sequences
-			for(int j=0; j<len; j++) {
-				int sl = 1+j;
-				int off = len-1-j;
-				if (sl>=sl_min && sl<=sl_max) {
-					if (n_seqs == out_alloc) {
-						out_alloc += grow;
-						*out=Realloc(*out,out_alloc,sizeof **out,0);
-					}
-
-					KSeq *se = *out + n_seqs;
-					memcpy(se->s, keys+off, sl*sizeof *keys);
-					se->s[sl] = 0;
-					se->len = sl;
-					se->samples = 1;
-					se->cost = calc_cost(sl,
-						delay+off,
-						mist+off,
-						k_age+off
-						);
-					n_seqs += 1;
+			if (len >= sl_min)
+			for(int l=sl_min; l<=sl_max; l++) {
+				if (n_seqs == out_alloc) {
+					out_alloc += grow;
+					*out=Realloc(*out,out_alloc,sizeof **out,0);
 				}
+				KSeq *se = *out + n_seqs;
+				memcpy(se->s, keys, l*sizeof *keys);
+				se->s[l] = 0;
+				se->len = l;
+				se->samples = 1;
+				se->cost = calc_cost(l, delay, mist, k_age);
+				n_seqs += 1;
 			}
 		} else {
 			// incorrect keypress
 			mist_acc += 1;
+			if (mist_acc > 3) {
+				// probably typing really fast
+				// and got one character wrong
+				mist_acc = 3;
+			}
 		}
 		prev_seq = seq;
 	}
@@ -244,7 +235,7 @@ size_t remove_duplicate_sequences(KSeq *s, size_t count)
 {
 	size_t dst=0, src=1, i;
 	if (count<2) return count;
-	qsort(s, count, sizeof *s, (CmpFunc) wcscmp);
+	qsort(s, count, sizeof *s, (CmpFunc) wcscasecmp);
 	while (src < count) {
 		if (wcscasecmp(s[src].s, s[dst].s)) {
 			dst += 1;
