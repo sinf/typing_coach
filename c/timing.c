@@ -11,7 +11,6 @@
 #include "prog_util.h"
 
 static sqlite3 *db = 0;
-char *database_path = "./keystrokes.db";
 static sqlite3_stmt *st_put_key = 0;
 static sqlite3_stmt *st_get_recent = 0;
 long the_typing_counter = 0;

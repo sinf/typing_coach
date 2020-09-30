@@ -44,7 +44,7 @@ static wchar_t cpm_str[32]=SNAN, wpm_str[32]=SNAN;
 static double cpm=0, wpm=0;
 
 #define CPM_WIN 30
-static void calc_cpm(int ms)
+static void calc_cpm(int ms, int correct)
 {
 	static int buf[CPM_WIN], pos=0, n=0;
 	if (ms > 10000) {
@@ -53,10 +53,13 @@ static void calc_cpm(int ms)
 		wcscpy(wpm_str, SNAN);
 	} else {
 		buf[pos] = ms;
-		if (++pos > CPM_WIN)
-			pos = 0;
-		if (++n > CPM_WIN)
-			n = CPM_WIN;
+
+		if (correct) {
+			if (++pos > CPM_WIN)
+				pos = 0;
+			if (++n > CPM_WIN)
+				n = CPM_WIN;
+		}
 
 		int sum=0;
 		for(int i=0; i<n; ++i) {
@@ -156,12 +159,13 @@ int word_wrap_scan(const wchar_t s[], int s_len, int line_w) {
 
 void my_repaint()
 {
-	int y=3;
+	int y=4;
 	int i=0;
 
 	attron(COLOR_PAIR(C_INFO));
-	mvprintw(0, 0, "Database: %s | Wordlist: %s", database_path, wordlist_path);
-	mvprintw(1, 0, "cpm: %8ls | wpm: %8ls | keystrokes : %08ld", cpm_str, wpm_str, the_typing_counter);
+	mvprintw(0, 0, "Database: %s", database_path);
+	mvprintw(1, 0, "Wordlist: %s", wordlist_path);
+	mvprintw(2, 0, "cpm: %8ls | wpm: %8ls | keystrokes : %08ld", cpm_str, wpm_str, the_typing_counter);
 
 	int rows, cols;
 	getmaxyx(stdscr, rows, cols);
@@ -270,7 +274,7 @@ int check_input()
 	}
 
 	db_put(c, expected, delay_ms);
-	calc_cpm(delay_ms);
+	calc_cpm(delay_ms, c==expected);
 
 	return 1;
 }

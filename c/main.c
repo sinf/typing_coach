@@ -5,13 +5,17 @@
 #include <signal.h>
 #include <ctype.h>
 #include <curses.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include "prog_util.h"
 #include "timing.h"
 #include "wordlist.h"
 #include "win.h"
 
-Wordlist *the_wordlist = NULL;
 char *wordlist_path = "./wordlist";
+char *database_path = NULL;
+
+Wordlist *the_wordlist = NULL;
 static int test_quit = 0;
 static int test_seq_ = 0;
 
@@ -43,9 +47,26 @@ void parse_args(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
+	static char data_dir[1024], db_path[1024], wl_path[1024];
+	struct stat s;
+	char *home = getenv("HOME");
+	if (home) {
+		snprintf(data_dir, sizeof data_dir, "%s/.local/share/typingc", home);
+		if (stat(data_dir, &s)) {
+			mkdir(data_dir, 0755);
+		}
+		snprintf(db_path, sizeof db_path, "%s/keystrokes.db", data_dir);
+		snprintf(wl_path, sizeof wl_path, "%s/wordlist", data_dir);
+		database_path = db_path;
+
+		if (!stat(wl_path, &s))
+			wordlist_path = wl_path;
+	}
+
 	//setlocale(LC_ALL, "en_US.UTF-8");
 	parse_args(argc, argv);
-	the_wordlist = read_wordlist(the_wordlist, "./wordlist");
+
+	the_wordlist = read_wordlist(the_wordlist, wordlist_path);
 	db_open();
 
 	printf("Initialized\n");
