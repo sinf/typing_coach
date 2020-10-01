@@ -10,8 +10,8 @@ extern long the_typing_counter;
 struct KSeq {
 	wchar_t s[MAX_SEQ+1];
 	int len;
-	int samples;
-	double cost;
+	int samples, samples_raw;
+	double cost, cost_var, weight;
 };
 typedef struct KSeq KSeq;
 
@@ -32,8 +32,11 @@ KSeq *out[1]
 typedef int (*CmpFunc)(const void*,const void*);
 int cmp_seq_cost(const KSeq *a, const KSeq *b);
 
-double calc_cost(int len, int delay[], int mist[], int age[]);
+double calc_cost(int len, int delay[], int mist[]);
+double calc_weight(int len, int age[]);
+
 size_t remove_duplicate_sequences(KSeq *s, size_t count);
+size_t remove_neg_cost(KSeq *s, size_t count);
 
 #endif
 

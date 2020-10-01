@@ -181,14 +181,15 @@ void my_repaint()
 	}
 
 	if (top_seq_n) {
-		mvprintw(++y, 0, "%8s %6s  %s", "Sequence", "Cost", "Samples");
+		mvprintw(++y, 0, "%8s  %8s  %8s  %7s  %s", "Sequence", "Cost", "Sd", "Samples", "Samples (raw)");
 		for(size_t i=0; i<top_seq_n && y < rows; ++i) {
 			KSeq *s = top_seq + i;
 			move(++y, 0);
 			clrtoeol();
-			printw("%8.*ls %6.2f  %d",
+			printw("%8.*ls  %8.2f  %8.2f  %7d  %d",
 				s->len, s->s,
-				s->cost, s->samples);
+				s->cost, s->cost_var,
+				s->samples, s->samples_raw);
 		}
 	} else {
 		mvprintw(y+1, 0, "Randow words");
@@ -222,7 +223,7 @@ void get_more_words()
 	top_seq_n = 0;
 	KSeq *sq;
 	size_t i,n=db_get_sequences(20000,1,MAX_SEQ,&sq);
-	if (n<20) {
+	if (n<5) {
 		get_words(the_wordlist, MAX_WORDS, add_word);
 	} else {
 		// try all sequences starting from most expensive
@@ -250,9 +251,9 @@ void get_more_words()
 int check_input()
 {
 	static uint64_t last_ts = 0;
-	uint64_t ts = get_microsec();
 	int delay_ms = 0;
 	int c = getch();
+	uint64_t ts = get_microsec();
 	int expected = cbuf.ch[cbuf.pos];
 
 	if (last_ts != 0) {
@@ -266,6 +267,8 @@ int check_input()
 		cbuf.pos += 1;
 		if (cbuf.pos >= cbuf.len) {
 			get_more_words();
+			// ignore the first character of a screen since the user spends a few seconds reading
+			last_ts = 0;
 		}
 		last_ts = ts;
 	} else {
@@ -274,7 +277,9 @@ int check_input()
 	}
 
 	db_put(c, expected, delay_ms);
-	calc_cpm(delay_ms, c==expected);
+
+	if (delay_ms != 0)
+		calc_cpm(delay_ms, c==expected);
 
 	return 1;
 }

@@ -28,7 +28,7 @@ sql_count_rows[] = "SELECT COUNT(*) FROM keystrokes;",
 sql_get_recent[] =
 "SELECT sequence, pressed, expected, delay_ms, timestamp"
 " FROM keystrokes"
-" WHERE (delay_ms < 10000)"
+//" WHERE (delay_ms < 10000)"
 " ORDER BY sequence DESC LIMIT ?";
 
 void db_fail()
@@ -104,21 +104,22 @@ void db_put(wchar_t pressed, wchar_t expected, int delay_ms)
 	the_typing_counter += 1;
 }
 
-double calc_cost(int len, int delay[], int mist[], int age[])
+double calc_cost(int len, int delay[], int mist[])
 {
 	double cost=0;
-	for(int i=0; i<len; ++i)
-	{
-		// decay relevance with age
-		double A=.01;
-		double a=(A + (1.0-A)*pow(.99, age[i]+1));
-		double k=(i==len-1 ? len : 1.0);
-		cost = cost + a * k * (
-			+ delay[i]*0.01
-			+ mist[i]*2.0
-		);
+	for(int i=0; i<len; ++i) {
+		cost = cost + delay[i]*0.01 + mist[i]*10.0;
 	}
 	return cost / len;
+}
+
+double calc_weight(int len, int age[])
+{
+	double total=0.1;
+	for(int i=0; i<len; ++i) total += age[i];
+	const double A=0.001; // minimum weight
+	const double B = pow(0.2, 1.0 / (24*60*60));
+	return A + (1.0-A)*pow(B, total/len);
 }
 
 int cmp_seq_cost(const KSeq *a, const KSeq *b)
@@ -207,7 +208,9 @@ size_t db_get_sequences(int num_ch, int sl_min, int sl_max, KSeq *out[1])
 				se->s[l] = 0;
 				se->len = l;
 				se->samples = 1;
-				se->cost = calc_cost(l, delay, mist, k_age);
+				se->cost = calc_cost(l, delay, mist);
+				se->cost_var = -1;
+				se->weight = calc_weight(l, k_age);
 				n_seqs += 1;
 			}
 		} else {
@@ -232,24 +235,105 @@ size_t db_get_sequences(int num_ch, int sl_min, int sl_max, KSeq *out[1])
 
 size_t remove_duplicate_sequences(KSeq *s, size_t count)
 {
-	size_t dst=0, src=1, i;
+	size_t dst=0, src=0, mean_var_n=0, i;
+	double mean_var = 0;
+
 	if (count<2) return count;
 	qsort(s, count, sizeof *s, (CmpFunc) wcscasecmp);
+
 	while (src < count) {
-		if (wcscasecmp(s[src].s, s[dst].s)) {
-			dst += 1;
+		size_t run=1, n;
+		double mean=s[src].cost, w=0;
+
+		// see how many sequences are equal. compute mean over all samples
+		for(i=src+1; i<count && !wcscasecmp(s[src].s, s[i].s); ++i) {
+			run += 1;
+			mean += s[i].cost * s[i].weight;
+			w += s[i].weight;
+		}
+
+		if (run > 1) {
+			mean /= w;
+
+			// compute weighted variance over all samples
+			double var = 0;
+			for(i=0; i<run; ++i) {
+				double x = s[src+i].cost - mean;
+				var += s[src+i].weight * x*x;
+			}
+			var /= w;
+
+			double std = sqrt(var);
+			double max_cost = mean + 3*std;
+
+			mean = 0;
+			var = 0;
+			n = 0;
+			w = 0;
+
+			// compute weighted mean for samples within reasonable range
+			for(i=0; i<run; ++i) {
+				if (s[src+i].cost < max_cost) {
+					n += 1;
+					mean += s[src+i].weight * s[src+i].cost;
+					w += s[src+i].weight;
+				}
+			}
+			
+			mean /= w;
+			// compute weighted variance for samples within reasonable range
+			for(i=0; i<run; ++i) {
+				if (s[src+i].cost < max_cost) {
+					double x = s[src+i].cost - mean;
+					var += s[src+i].weight * x*x;
+				}
+			}
+			var /= w;
+
+			s[dst] = s[src];
+			s[dst].samples = n;
+			s[dst].samples_raw = run;
+			s[dst].cost = mean;
+			s[dst].cost_var = var;
+
+			mean_var += var;
+			mean_var_n += 1;
+		} else {
+			// unique sample. can't compute variance
+			s[dst] = s[src];
+			s[dst].samples = 1;
+			s[dst].samples_raw = 1;
+			s[dst].cost_var = 0.0001;
+			s[dst].weight = 1.0;
+		}
+
+		dst += 1;
+		src += run;
+	}
+
+	if (mean_var_n > 0) {
+		// assume variance of unique sequences is mean of all variances
+		mean_var /= mean_var_n;
+		for(i=0; i<dst; ++i) {
+			if (s[i].samples==1)
+				s[i].cost_var = mean_var;
+		}
+	}
+
+	return dst;
+}
+
+size_t remove_neg_cost(KSeq *s, size_t count)
+{
+	size_t dst=0, src=0;
+	while (src < count) {
+		if (s[src].cost >= 0) {
 			if (dst != src)
 				s[dst] = s[src];
-		} else {
-			s[dst].samples += 1;
-			s[dst].cost += s[src].cost;
+			dst += 1;
 		}
 		src += 1;
 	}
-	count = dst + 1;
-	for(i=0; i<count; ++i) {
-		s[i].cost /= s[i].samples;
-	}
-	return count;
+	return dst;
 }
 
