@@ -35,7 +35,9 @@ void parse_args(int argc, char **argv)
 "Arguments\n"
 "  -h show this help text\n"
 "  -d set sqlite3 database file for keystrokes\n"
+"     [~/.local/share/typingc/keystrokes.db]\n"
 "  -w set wordlist file (utf8, one word per line)\n"
+"     [~/.local/share/typingc/wordlist]\n"
 "  -q open/create database and quit\n"
 "  -s show slowest sequences and quit\n"
 );
@@ -50,6 +52,7 @@ int main(int argc, char **argv)
 	static char data_dir[1024], db_path[1024], wl_path[1024];
 	struct stat s;
 	char *home = getenv("HOME");
+
 	if (home) {
 		snprintf(data_dir, sizeof data_dir, "%s/.local/share/typingc", home);
 		if (stat(data_dir, &s)) {
@@ -58,6 +61,12 @@ int main(int argc, char **argv)
 		snprintf(db_path, sizeof db_path, "%s/keystrokes.db", data_dir);
 		snprintf(wl_path, sizeof wl_path, "%s/wordlist", data_dir);
 		database_path = db_path;
+
+		if (stat(wl_path, &s)) {
+			char cmd[1024];
+			snprintf(cmd, sizeof cmd, "/bin/cp /usr/share/dict/american-english %s", wl_path);
+			system(cmd);
+		}
 
 		if (!stat(wl_path, &s))
 			wordlist_path = wl_path;
