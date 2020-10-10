@@ -295,6 +295,7 @@ size_t remove_duplicate_sequences(KSeq *s, size_t count)
 			s[dst].samples_raw = run;
 			s[dst].cost = mean;
 			s[dst].cost_var = var;
+			dst += 1;
 
 			mean_var += var;
 			mean_var_n += 1;
@@ -305,9 +306,9 @@ size_t remove_duplicate_sequences(KSeq *s, size_t count)
 			s[dst].samples_raw = 1;
 			s[dst].cost_var = 0.0001;
 			s[dst].weight = 1.0;
+			dst += 1;
 		}
 
-		dst += 1;
 		src += run;
 	}
 
