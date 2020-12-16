@@ -12,14 +12,6 @@
 #include "wordlist.h"
 #include "win.h"
 
-/* todo
-- predict how much time a user types a word
-- score wordlist according to predicted typing time / mistakes 
-- avoid re-sorting wordlist
-- break long words into ~5 character fragments, mix fragments to get more vocabulary
-- ignore 10% fastest and 10% slowest inputs to remove noise
-*/
-
 char *wordlist_path = "./wordlist";
 char *database_path = NULL;
 
@@ -73,14 +65,16 @@ int main(int argc, char **argv)
 		if (stat(wl_path, &s)) {
 			char cmd[1024];
 			snprintf(cmd, sizeof cmd, "/bin/cp /usr/share/dict/american-english %s", wl_path);
-			system(cmd);
+			if (system(cmd)) {
+				fprintf(stderr, "Failed to execute: %s\n", cmd);
+			}
 		}
 
 		if (!stat(wl_path, &s))
 			wordlist_path = wl_path;
 	}
 
-	//setlocale(LC_ALL, "en_US.UTF-8");
+	setlocale(LC_ALL, "en_US.UTF-8");
 	parse_args(argc, argv);
 
 	the_wordlist = read_wordlist(the_wordlist, wordlist_path);

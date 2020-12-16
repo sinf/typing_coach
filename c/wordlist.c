@@ -3,6 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <unistr.h>
+#include <unicase.h>
+#include <unictype.h>
+
 #include <ctype.h>
 #include <wctype.h>
 #include <wchar.h>
@@ -10,45 +14,52 @@
 #include "timing.h"
 #include "prog_util.h"
 #include "win.h"
+#include "sz_mult.h"
+#include "kseq.h"
 
-Wordlist *append_wordlist(Wordlist *wl, const wchar_t *wd)
+Wordlist *append_wordlist(Wordlist *wl, const Word *w)
 {
-	// overflow bug and unchecked realloc
-	size_t count=0, alloc=32000;
-	Word *w;
-	if (wl) {
-		count = wl->len;
-		alloc = wl->alloc + 16000;
-	}
-	wl = Realloc(wl, alloc, sizeof(*w), sizeof *wl);
-	wl->len = count + 1;
-	wl->alloc = alloc;
+	size_t alloc, len;
 
-	w = wl->words + count;
-	wcsncpy(w->s, wd, WORD_MAX-1);
-	w->s[WORD_MAX-1] = L'\0';
-	w->len = wcslen(w->s);
+	if (wl) {
+		alloc = wl->alloc;
+		len = wl->len;
+	} else {
+		alloc = 0;
+		len = 0;
+	}
+
+	if (len >= alloc)
+		alloc += 16000;
+
+	wl = Realloc(wl, alloc, sizeof(Word), sizeof(Wordlist));
+	wl->alloc = alloc;
+	wl->words[len] = *w;
+	wl->len = len + 1;
+
 	return wl;
 }
 
-wchar_t *stripw(wchar_t *s)
+Word w_strip(Word *in)
 {
-	// remove spaces from start and end
-	while(iswspace(*s)) ++s;
-	size_t n = wcslen(s);
-	if (n) {
-		wchar_t *end = s + n - 1;
-		while(iswspace(*end)) --end;
-		end[1] = L'\0';
+	Word out;
+	int l, r;
+	out.len = 0;
+	if (in->len > 0) {
+		for(l=0; uc_is_space(in->s[l]); ++l) {}
+		for(r=in->len-1; uc_is_space(in->s[r]); --r) {}
+		out.len = in->len - l - r;
+		memcpy(out.s, in->s + l, out.len*4);
 	}
-	return s;
+	return out;
 }
 
-wchar_t *lower(wchar_t *s, size_t len)
+void w_to_lower(Word *w)
 {
-	for(size_t i=0; i<len && s[i]!=L'\0'; ++i)
-		s[i] = towlower(s[i]);
-	return s;
+	size_t n=0;
+	uint32_t *tmp = u32_tolower(w->s, w->len, iso639_lang, NULL, NULL, &n);
+	memcpy(w->s, tmp, n*4);
+	free(tmp);
 }
 
 Wordlist* read_wordlist(Wordlist *wl, const char *fn)
@@ -60,12 +71,20 @@ Wordlist* read_wordlist(Wordlist *wl, const char *fn)
 	}
 	const int k = 256;
 	char buf[k];
-	wchar_t wbuf[k];
+
 	while (fgets(buf, sizeof(buf), fp)) {
-		mbstowcs(wbuf, buf, k);
-		wchar_t *w = stripw(wbuf);
-		w = lower(w, k);
-		wl = append_wordlist(wl, w);
+
+		int buf_bytes = u8_mblen((uint8_t*) buf, k);
+		if (buf_bytes > 0) {
+			Word w0, w;
+			utf8_to_word(buf, buf_bytes, &w0);
+			w = w_strip(&w0);
+			w_to_lower(&w);
+			if (w.len > 0) {
+				db_put_word_seqs(buf, buf_bytes);
+				append_wordlist(wl, &w);
+			}
+		}
 	}
 	fclose(fp);
 	return wl;
@@ -89,26 +108,43 @@ void shuffle_words(Word *array, size_t n)
 }
 
 
-void get_words(Wordlist *wl, int count, int (*func)(Word *))
+void get_words(int count, int (*func)(Word *))
 {
-	shuffle_words(wl->words, wl->len);
-	for(size_t i=0; i<wl->len; ++i) {
-		if (!func(wl->words+i)) break;
-		if (--count < 1) break;
+	Word w[count];
+	int n = db_get_words_random(w, count);
+	for(int i=0; i<n; ++i) {
+		if (!func(w+i)) break;
 	}
 }
 
-int get_words_s(Wordlist *wl, int count, int (*func)(Word *), wchar_t seq[])
+int get_words_s(int count, int (*func)(Word *), KSeq *seq)
 {
+	size_t lo_n=0;
+	uint32_t *lo = u32_tolower(seq->s, seq->len, iso639_lang, NULL, NULL, &lo_n);
+
+	size_t seq8_n=0;
+	char *seq8 = (char*) u32_to_u8(lo, lo_n, NULL, &seq8_n);
+
+	Word w[count];
+	int n = db_get_words(seq8, seq8_n, w, count);
+
 	int added = 0;
-	lower(seq, MAX_SEQ);
-	shuffle_words(wl->words, wl->len);
-	for(size_t i=0; i<wl->len; ++i) {
-		if (wcsstr(wl->words[i].s, seq)) {
-			if (!func(wl->words+i)) break;
-			if (++added == count) break;
-		}
+	for(int i=0; i<n; ++i) {
+		if (!func(w+i)) break;
+		added += 1;
 	}
+
+	free(seq8);
 	return added;
+}
+
+void utf8_to_word(const char u8[], int u8_bytes, Word w[1])
+{
+	size_t l=0;
+	uint32_t *tmp = u8_to_u32((const uint8_t*) u8, u8_bytes, NULL, &l);
+	if (l > WORD_MAX) l = WORD_MAX;
+	memcpy(w->s, tmp, sz_mult(l, sizeof *tmp, 0));
+	w->len = l;
+	free(tmp);
 }
 

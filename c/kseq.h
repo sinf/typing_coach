@@ -1,17 +1,26 @@
 #ifndef _STATS_H
 #define _STATS_H
 #include <wchar.h>
+#include <stdint.h>
+
+typedef uint32_t KeyCode;
 
 #define MAX_SEQ 4
 struct KSeq {
-	wchar_t s[MAX_SEQ+1];
+	KeyCode s[MAX_SEQ];
 	int len;
 	int samples, samples_raw;
 	double cost, cost_var, weight;
 };
 typedef struct KSeq KSeq;
+typedef struct WStr WStr;
 
-void 
+int kseq_to_wchar(KSeq *s, wchar_t buf[], int buflen);
+
+// need #include <unictype.h>
+#define k_is_space uc_is_c_whitespace
+
+int kseq_equal(const KSeq *a, const KSeq *b);
 
 #endif
 

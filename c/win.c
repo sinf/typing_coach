@@ -85,7 +85,7 @@ void buf_clear()
 	}
 }
 
-void buf_write(int len, const wchar_t *s, Word *w)
+void buf_write(int len, const uint32_t *s, Word *w)
 {
 	int i0 = cbuf.len;
 	int i1 = i0 + len;
@@ -102,8 +102,10 @@ void buf_write(int len, const wchar_t *s, Word *w)
 int add_word(struct Word *w)
 {
 	int l0 = cbuf.len;
-	if (cbuf.len > 0)
-		buf_write(1, L" ", NULL);
+	if (cbuf.len > 0) {
+		uint32_t space[] = {' '};
+		buf_write(1, space, NULL);
+	}
 	buf_write(w->len, w->s, w);
 	return l0 != cbuf.len;
 }
@@ -224,19 +226,19 @@ void get_more_words()
 	KSeq *sq;
 	size_t i,n=db_get_sequences(20000,1,MAX_SEQ,&sq);
 	if (n<5) {
-		get_words(the_wordlist, MAX_WORDS, add_word);
+		get_words(MAX_WORDS, add_word);
 	} else {
 		// try all sequences starting from most expensive
 		for(i=0; i<n; i++) {
 			if (
-			get_words_s(the_wordlist, 5, add_word_, sq[i].s)
+			get_words_s(5, add_word_, sq+i)
 			&& top_seq_n < MAX_TOP_SEQ) {
 				top_seq[top_seq_n++] = sq[i];
 			}
 			if (next_count >= MAX_WORDS*2/3)
 				break;
 		}
-		get_words(the_wordlist, MAX_WORDS, add_word_);
+		get_words(MAX_WORDS, add_word_);
 		flush_next();
 	}
 
