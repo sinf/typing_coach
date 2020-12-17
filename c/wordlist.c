@@ -3,13 +3,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <assert.h>
 #include <unistr.h>
 #include <unicase.h>
 #include <unictype.h>
 
-#include <ctype.h>
-#include <wctype.h>
-#include <wchar.h>
 #include "wordlist.h"
 #include "timing.h"
 #include "prog_util.h"
@@ -17,28 +15,7 @@
 #include "sz_mult.h"
 #include "kseq.h"
 
-Wordlist *append_wordlist(Wordlist *wl, const Word *w)
-{
-	size_t alloc, len;
-
-	if (wl) {
-		alloc = wl->alloc;
-		len = wl->len;
-	} else {
-		alloc = 0;
-		len = 0;
-	}
-
-	if (len >= alloc)
-		alloc += 16000;
-
-	wl = Realloc(wl, alloc, sizeof(Word), sizeof(Wordlist));
-	wl->alloc = alloc;
-	wl->words[len] = *w;
-	wl->len = len + 1;
-
-	return wl;
-}
+#define is_whitespace uc_is_property_white_space
 
 Word w_strip(Word *in)
 {
@@ -46,8 +23,8 @@ Word w_strip(Word *in)
 	int l, r;
 	out.len = 0;
 	if (in->len > 0) {
-		for(l=0; uc_is_space(in->s[l]); ++l) {}
-		for(r=in->len-1; uc_is_space(in->s[r]); --r) {}
+		for(l=0; is_whitespace(in->s[l]); ++l) {}
+		for(r=0; is_whitespace(in->s[in->len-1-r]); ++r) {}
 		out.len = in->len - l - r;
 		memcpy(out.s, in->s + l, out.len*4);
 	}
@@ -58,11 +35,12 @@ void w_to_lower(Word *w)
 {
 	size_t n=0;
 	uint32_t *tmp = u32_tolower(w->s, w->len, iso639_lang, NULL, NULL, &n);
+	if (n > WORD_MAX) n = WORD_MAX;
 	memcpy(w->s, tmp, n*4);
 	free(tmp);
 }
 
-Wordlist* read_wordlist(Wordlist *wl, const char *fn)
+void read_wordlist(const char *fn)
 {
 	FILE *fp = fopen(fn, "r");
 	if (!fp) {
@@ -72,22 +50,28 @@ Wordlist* read_wordlist(Wordlist *wl, const char *fn)
 	const int k = 256;
 	char buf[k];
 
+	db_trans_begin();
+
 	while (fgets(buf, sizeof(buf), fp)) {
 
-		int buf_bytes = u8_mblen((uint8_t*) buf, k);
+		int buf_bytes = strlen(buf);
+
 		if (buf_bytes > 0) {
 			Word w0, w;
-			utf8_to_word(buf, buf_bytes, &w0);
+			w0 = utf8_to_word(buf, buf_bytes);
+
+			// do stripping and lowercasing in UTF32
 			w = w_strip(&w0);
 			w_to_lower(&w);
-			if (w.len > 0) {
+
+			buf_bytes = word_to_utf8(&w, buf, k);
+			if (buf_bytes > 0)
 				db_put_word_seqs(buf, buf_bytes);
-				append_wordlist(wl, &w);
-			}
 		}
 	}
 	fclose(fp);
-	return wl;
+
+	db_trans_end();
 }
 
 void shuffle_words(Word *array, size_t n)
@@ -138,13 +122,27 @@ int get_words_s(int count, int (*func)(Word *), KSeq *seq)
 	return added;
 }
 
-void utf8_to_word(const char u8[], int u8_bytes, Word w[1])
+Word utf8_to_word(const char u8[], int u8_bytes)
 {
+	Word w;
+	assert(u8_bytes >= 0);
 	size_t l=0;
 	uint32_t *tmp = u8_to_u32((const uint8_t*) u8, u8_bytes, NULL, &l);
 	if (l > WORD_MAX) l = WORD_MAX;
-	memcpy(w->s, tmp, sz_mult(l, sizeof *tmp, 0));
-	w->len = l;
+	memcpy(w.s, tmp, sz_mult(l, sizeof *tmp, 0));
+	w.len = l;
 	free(tmp);
+	return w;
+}
+
+int word_to_utf8(Word *w, char buf[], int bufsize)
+{
+	assert(bufsize >= 0);
+	size_t l=0;
+	uint8_t *p = u32_to_u8(w->s, w->len, NULL, &l);
+	if (l > bufsize-1) l = bufsize-1;
+	memcpy(buf, p, l);
+	buf[l] = '\0';
+	return l;
 }
 

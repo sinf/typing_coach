@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
-#include <ctype.h>
+#include <string.h>
 #include <curses.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -12,34 +12,61 @@
 #include "wordlist.h"
 #include "win.h"
 
-char *wordlist_path = "./wordlist";
-char *database_path = NULL;
-
-Wordlist *the_wordlist = NULL;
 static int test_quit = 0;
 static int test_seq_ = 0;
+
+static void test_pick_words(const char *seq)
+{
+	test_quit = 1;
+	db_open();
+
+	const int limit = 10;
+	Word w[limit];
+	char buf[512];
+
+	int seq_b = strlen(seq);
+	printf("Sequence bytes: %d\n", seq_b);
+	printf("Sequence: %*s\n", seq_b, seq);
+
+	const int n = db_get_words(seq, seq_b, w, limit);
+
+	printf("Words that contain it\n");
+	for(int i=0; i<n; ++i) {
+		int k = word_to_utf8(w+i, buf, sizeof buf);
+		buf[sizeof(buf)-1] = '\0';
+		printf("> %*s\n", k, buf);
+	}
+}
 
 void parse_args(int argc, char **argv)
 {
 	int c;
-	while((c = getopt(argc, argv, "qshd:w:")) != -1) {
+	while((c = getopt(argc, argv, "qshd:w:p:")) != -1) {
 		switch(c) {
 			case 'd': database_path = optarg; break;
-			case 'w': wordlist_path = optarg; break;
+			case 'w':
+				db_open();
+				printf("Merging wordlist.. %s\n", optarg);
+				read_wordlist(optarg);
+				break;
 			case 'q': test_quit = 1; break;
 			case 's': test_seq_ = 1; break;
+			case 'p': test_pick_words(optarg); break;
 			case 'h':
 				puts(
 "\nTyping coach version " GIT_REF_STR "\n\n"
 "Usage: " EXE_NAME " [-d FILE] [-w FILE]\n\n"
 "Arguments\n"
 "  -h show this help text\n"
-"  -d set sqlite3 database file for keystrokes\n"
+"  -d FILENAME\n"
+"     set sqlite3 database file for keystrokes\n"
 "     [~/.local/share/typingc/keystrokes.db]\n"
-"  -w set wordlist file (utf8, one word per line)\n"
-"     [~/.local/share/typingc/wordlist]\n"
+"  -w FILENAME\n"
+"     merge wordlist to database from a file (utf8, one word per line)\n"
 "  -q open/create database and quit\n"
 "  -s show slowest sequences and quit\n"
+"  -p STRING\n"
+"     pick words that contain this substring\n"
 );
 				exit(1);
 			default: break;
@@ -49,7 +76,7 @@ void parse_args(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-	static char data_dir[1024], db_path[1024], wl_path[1024];
+	static char data_dir[1024], db_path[1024];
 	struct stat s;
 	char *home = getenv("HOME");
 
@@ -58,32 +85,18 @@ int main(int argc, char **argv)
 		if (stat(data_dir, &s)) {
 			mkdir(data_dir, 0755);
 		}
-		snprintf(db_path, sizeof db_path, "%s/keystrokes.db", data_dir);
-		snprintf(wl_path, sizeof wl_path, "%s/wordlist", data_dir);
+		snprintf(db_path, sizeof db_path, "%s/typing.db", data_dir);
 		database_path = db_path;
-
-		if (stat(wl_path, &s)) {
-			char cmd[1024];
-			snprintf(cmd, sizeof cmd, "/bin/cp /usr/share/dict/american-english %s", wl_path);
-			if (system(cmd)) {
-				fprintf(stderr, "Failed to execute: %s\n", cmd);
-			}
-		}
-
-		if (!stat(wl_path, &s))
-			wordlist_path = wl_path;
 	}
 
 	setlocale(LC_ALL, "en_US.UTF-8");
 	parse_args(argc, argv);
-
-	the_wordlist = read_wordlist(the_wordlist, wordlist_path);
 	db_open();
-
-	printf("Initialized\n");
 
 	if (test_quit)
 		quit();
+
+	printf("Initialized\n");
 	
 	if (test_seq_) {
 		KSeq *seqs;

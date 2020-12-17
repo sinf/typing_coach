@@ -166,7 +166,6 @@ void my_repaint()
 
 	attron(COLOR_PAIR(C_INFO));
 	mvprintw(0, 0, "Database: %s", database_path);
-	mvprintw(1, 0, "Wordlist: %s", wordlist_path);
 	mvprintw(2, 0, "cpm: %8ls | wpm: %8ls | keystrokes : %08ld", cpm_str, wpm_str, the_typing_counter);
 
 	int rows, cols;

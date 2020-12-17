@@ -36,6 +36,7 @@ void fail(const char *msg1, ...)
 	fprintf(stderr, "Error: %d, %s\n", e, es);
 	vfprintf(stderr, msg1, ap);
 	va_end(ap);
+	abort();
 	exit(1);
 }
 

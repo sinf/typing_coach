@@ -5,6 +5,7 @@
 #include "kseq.h"
 #include "wordlist.h"
 
+extern char *database_path;
 extern long the_typing_counter;
 
 void db_open();
@@ -30,11 +31,7 @@ double calc_weight(int len, int age[]);
 size_t remove_duplicate_sequences(KSeq *s, size_t count);
 size_t remove_neg_cost(KSeq *s, size_t count);
 
-/* put one sequence:word pair into database
-for later fetching a list of words that contain that sequence */
-void db_put_word_seq(const char seq[], int seq_bytes, const char word[], int word_bytes);
-
-/* break a word into all sequences and call db_put_word_seq() for each */
+/* break a word into all sequences and store to database */
 void db_put_word_seqs(const char word[], int word_bytes);
 
 /* Fetches words that contain a sequence (substring)
