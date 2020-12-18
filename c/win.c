@@ -6,7 +6,7 @@
 #include "wordlist.h"
 #include "win.h"
 #include "microsec.h"
-#include "timing.h"
+#include "database.h"
 #include "dpy.h"
 #include "spambox.h"
 #include "cpm_counter.h"

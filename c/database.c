@@ -11,7 +11,7 @@
 #include <unicase.h>
 #include <assert.h>
 #include "sz_mult.h"
-#include "timing.h"
+#include "database.h"
 #include "prog_util.h"
 
 // sqlite3_bind_.. use 0-based indexing

@@ -9,7 +9,7 @@
 #include <unictype.h>
 
 #include "wordlist.h"
-#include "timing.h"
+#include "database.h"
 #include "prog_util.h"
 #include "win.h"
 #include "sz_mult.h"

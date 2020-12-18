@@ -5,7 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include "prog_util.h"
-#include "timing.h"
+#include "database.h"
 #include "sz_mult.h"
 
 char *iso639_lang = "en";

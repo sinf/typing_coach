@@ -8,7 +8,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "prog_util.h"
-#include "timing.h"
+#include "database.h"
 #include "wordlist.h"
 #include "win.h"
 
