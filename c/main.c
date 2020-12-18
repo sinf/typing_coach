@@ -13,12 +13,11 @@
 #include "dpy.h"
 #include "mainloop.h"
 
-static int test_quit = 0;
-static int test_seq_ = 0;
+static int quit_flag = 0;
 
 static void test_pick_words(const char *seq)
 {
-	test_quit = 1;
+	quit_flag = 1;
 	db_open();
 
 	const int limit = 10;
@@ -42,7 +41,7 @@ static void test_pick_words(const char *seq)
 void parse_args(int argc, char **argv)
 {
 	int c;
-	while((c = getopt(argc, argv, "qshd:w:p:")) != -1) {
+	while((c = getopt(argc, argv, "qhd:w:p:")) != -1) {
 		switch(c) {
 			case 'd': database_path = optarg; break;
 			case 'w':
@@ -50,12 +49,12 @@ void parse_args(int argc, char **argv)
 				printf("Merging wordlist.. %s\n", optarg);
 				read_wordlist(optarg);
 				break;
-			case 'q': test_quit = 1; break;
-			case 's': test_seq_ = 1; break;
+			case 'q': quit_flag = 1; break;
 			case 'p': test_pick_words(optarg); break;
 			case 'h':
 				puts(
-"\nTyping coach version " GIT_REF_STR "\n\n"
+"\nTyping coach\n"
+"git hash: " GIT_REF_STR "\n\n"
 "Usage: " EXE_NAME " [-d FILE] [-w FILE]\n\n"
 "Arguments\n"
 "  -h show this help text\n"
@@ -64,8 +63,7 @@ void parse_args(int argc, char **argv)
 "     [~/.local/share/typingc/keystrokes.db]\n"
 "  -w FILENAME\n"
 "     merge wordlist to database from a file (utf8, one word per line)\n"
-"  -q open/create database and quit\n"
-"  -s show slowest sequences and quit\n"
+"  -q quit (after the other options)\n"
 "  -p STRING\n"
 "     pick words that contain this substring\n"
 );
@@ -94,26 +92,14 @@ int main(int argc, char **argv)
 	parse_args(argc, argv);
 	db_open();
 
-	if (test_quit)
+	if (quit_flag)
 		quit();
 
 	printf("Initialized\n");
-	
-	if (test_seq_) {
-		KSeq *seqs;
-		size_t n = db_get_sequences(10000, 1, MAX_SEQ, &seqs),
-			n1 = n<20 ? n : 20, i;
-		printf("Top %d slowest sequences\n", (int) n1);
-		for(i=0; i<n1; ++i) {
-			KSeq s = seqs[i];
-			printf("%8.*ls  cost=%.3g samples=%d\n", s.len, s.s, s.cost, s.samples);
-		}
-		quit();
-	}
 
 	cu_setup();
 	signal(SIGINT, quit_int);
-	main_loop();
+	main_menu();
 	cleanup();
 	return 0;
 }

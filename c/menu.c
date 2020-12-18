@@ -8,19 +8,22 @@ int show_menu(const char *title, const MenuEntry options[], int n, int sel[1])
 		dpy_begin();
 		dpy_print(0, C_STATUS, "%s", title);
 		for(int i=0; i<n; ++i) {
+			const char *xl="   ", *xr="   ";
+			int c = C_UNTYPED;
+			if (i==*sel) {
+				c = C_TYPED;
+				xl = "-- ";
+				xr = " --";
+			}
 			if (options[i].toggle) {
 				// on/off toggle
 				const char *chk = *(options[i].toggle) ? "on " : "off";
-				dpy_print(1+i, C_NORMAL, " %-34.34s [%s]",
-					options[i].label, chk);
+				dpy_print(1+i, c, "%s%-34.34s [%s]%s",
+					xl, options[i].label, chk, xr);
 			} else {
 				// button
-				dpy_print(1+i, C_NORMAL, " %-40.40s",
-					options[i].label);
-			}
-			if (i==*sel) {
-				attron(COLOR_PAIR(C_STATUS));
-				addstr(" <===");
+				dpy_print(1+i, c, "%s%-40.40s%s",
+					xl, options[i].label, xr);
 			}
 		}
 		dpy_refresh();

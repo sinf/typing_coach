@@ -11,6 +11,7 @@ static int dpy_rows=-1, dpy_cols=-1;
 void dpy_begin(void)
 {
 	erase();
+	clrtobot();
 	getmaxyx(stdscr, dpy_rows, dpy_cols);
 	if (dpy_cols > 80) dpy_cols = 80;
 }
