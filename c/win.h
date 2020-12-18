@@ -1,7 +1,6 @@
 #pragma once
 #ifndef _WIN_H
 #define _WIN_H
-#include <wchar.h>
 #include <unistr.h>
 
 struct Word;

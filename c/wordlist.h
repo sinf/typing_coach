@@ -2,7 +2,6 @@
 #ifndef _WORDLIST_H
 #define _WORDLIST_H
 #include <stddef.h>
-#include <wchar.h>
 #include <stdint.h>
 #include "kseq.h"
 

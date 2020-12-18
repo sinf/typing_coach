@@ -1,22 +1,22 @@
-#include <wchar.h>
+#include <stdio.h>
+#include <string.h>
 #include "cpm_counter.h"
 
 // CPM_WIN: how many last characters contribute to CPM calculation
 #define CPM_WIN 30
 
-#define SNAN L"---"
+#define SNAN "---"
 
-wchar_t cpm_str[CPM_STR_MAX]=SNAN, wpm_str[CPM_STR_MAX]=SNAN;
+char cpm_str[CPM_STR_MAX]=SNAN, wpm_str[CPM_STR_MAX]=SNAN;
 static double cpm=0, wpm=0;
-
 
 void calc_cpm(int ms, int correct)
 {
 	static int buf[CPM_WIN], pos=0, n=0;
 	if (ms > 10000) {
 		pos=n=0;
-		wcscpy(cpm_str, SNAN);
-		wcscpy(wpm_str, SNAN);
+		strcpy(cpm_str, SNAN);
+		strcpy(wpm_str, SNAN);
 	} else {
 		buf[pos] = ms;
 
@@ -35,8 +35,8 @@ void calc_cpm(int ms, int correct)
 
 		cpm = (double) sum / n;
 		wpm = cpm * 0.2;
-		swprintf(cpm_str, 32, L"%.0f", cpm);
-		swprintf(wpm_str, 32, L"%.0f", wpm);
+		snprintf(cpm_str, CPM_STR_MAX, "%.0f", cpm);
+		snprintf(wpm_str, CPM_STR_MAX, "%.0f", wpm);
 	}
 }
 

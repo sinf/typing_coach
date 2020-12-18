@@ -23,7 +23,7 @@ void my_repaint()
 
 	dpy_print(0, c0, "Database: %s", database_path);
 	dpy_print(1, c0, "%s", fmt_session_time());
-	dpy_print(2, c0, "cpm: %8ls | wpm: %8ls | keystrokes : %08ld", cpm_str, wpm_str, the_typing_counter);
+	dpy_print(2, c0, "cpm: %8s | wpm: %8s | keystrokes : %08ld", cpm_str, wpm_str, the_typing_counter);
 
 	int y = sb_paint(4);
 

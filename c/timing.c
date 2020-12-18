@@ -8,6 +8,7 @@
 #include <sqlite3.h>
 #include <unistr.h>
 #include <unictype.h>
+#include <unicase.h>
 #include <assert.h>
 #include "sz_mult.h"
 #include "timing.h"
@@ -316,7 +317,7 @@ size_t remove_duplicate_sequences(KSeq *s, size_t count)
 	double mean_var = 0;
 
 	if (count<2) return count;
-	qsort(s, count, sizeof *s, (CmpFunc) wcscasecmp);
+	qsort(s, count, sizeof *s, (CmpFunc) kseq_cmp);
 
 	while (src < count) {
 		size_t run=1, n;

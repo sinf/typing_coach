@@ -22,10 +22,12 @@ get:
 	sudo apt install libncurses-dev libsqlite3-dev ctags cscope libunistring-dev
 
 tags: $(DEPS)
+	@rm -f tags cscope.out
 	-ctags -R -f $@ .
 	-cscope -R -b -f cscope.out
 
 cscope.out: $(DEPS)
+	@rm -f $@
 	cscope -R -b -f $@
 
 clean:
