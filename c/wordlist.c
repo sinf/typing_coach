@@ -11,7 +11,6 @@
 #include "wordlist.h"
 #include "database.h"
 #include "prog_util.h"
-#include "win.h"
 #include "sz_mult.h"
 #include "kseq.h"
 

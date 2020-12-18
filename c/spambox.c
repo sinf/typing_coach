@@ -1,3 +1,4 @@
+#include <unictype.h>
 #include "dpy.h"
 #include "wordlist.h"
 #include "spambox.h"
@@ -82,6 +83,16 @@ void sb_putc(KeyCode c)
 		// typed wrong
 		cbuf.color[cbuf.pos] = C_MISTAKE;
 	}
+}
+
+void sb_skip_spaces(void)
+{
+	int i;
+	for(i=cbuf.pos; i<cbuf.len; ++i) {
+		if (!is_whitespace(cbuf.ch[i]))
+			break;
+	}
+	cbuf.pos = i;
 }
 
 int sb_paint(int y)

@@ -44,9 +44,9 @@ static const char sql_create[] =
 
 "CREATE TABLE IF NOT EXISTS sm2"
 "( seq TEXT UNIQUE NOT NULL,"
-" n REAL,"
-" EF REAL,"
-" I REAL );\n"
+" n REAL DEFAULT (0),"
+" EF REAL DEFAULT (2.5),"
+" I REAL DEFAULT (1));\n"
 ;
 
 static const char sql_create2[] = 
@@ -71,7 +71,8 @@ static const char sql_get_recent[] =
 
 static const char sql_assoc_seq_word[] =
 "INSERT OR IGNORE INTO seq_words (seq,word_id) VALUES (?,"
-"(SELECT rowid FROM words WHERE word = ?))";
+"(SELECT rowid FROM words WHERE word = ?));\n"
+"INSERT OR IGNORE INTO sm2 VALUES (?);\n";
 
 static const char sql_get_words[] =
 "SELECT word FROM words WHERE rowid IN"
@@ -426,10 +427,16 @@ static void db_put_word_seq(const char seq[], int seq_bytes, const char word[], 
 	sqlite3_stmt *s = st_assoc_seq_word;
 	int e, ok=SQLITE_OK;
 
+	// seq --> word
 	e = sqlite3_bind_text(s, 1, seq, seq_bytes, NULL);
-	if (e != ok) db_fail("assoc_seq_word bind");
+	if (e != ok) db_fail("assoc_seq_word bind 1");
 	e = sqlite3_bind_text(s, 2, word, word_bytes, NULL);
-	if (e != ok) db_fail("assoc_seq_word bind");
+	if (e != ok) db_fail("assoc_seq_word bind 2");
+
+	// sm2
+	e = sqlite3_bind_text(s, 3, seq, seq_bytes, NULL);
+	if (e != ok) db_fail("assoc_seq_word bind 3");
+
 	e = sqlite3_step(s);
 	if (e != SQLITE_DONE) db_fail("assoc_seq_word step");
 	sqlite3_reset(s);

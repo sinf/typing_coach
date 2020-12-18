@@ -10,7 +10,8 @@
 #include "prog_util.h"
 #include "database.h"
 #include "wordlist.h"
-#include "win.h"
+#include "dpy.h"
+#include "mainloop.h"
 
 static int test_quit = 0;
 static int test_seq_ = 0;
@@ -112,12 +113,7 @@ int main(int argc, char **argv)
 
 	cu_setup();
 	signal(SIGINT, quit_int);
-	get_more_words();
-
-	do {
-		my_repaint();
-	} while(check_input());
-
+	main_loop();
 	cleanup();
 	return 0;
 }
