@@ -22,5 +22,7 @@ int kseq_to_wchar(KSeq *s, wchar_t buf[], int buflen);
 
 int kseq_equal(const KSeq *a, const KSeq *b);
 
+#define is_whitespace uc_is_property_white_space
+
 #endif
 

@@ -15,8 +15,6 @@
 #include "sz_mult.h"
 #include "kseq.h"
 
-#define is_whitespace uc_is_property_white_space
-
 Word w_strip(Word *in)
 {
 	Word out;

@@ -8,7 +8,6 @@
 #include "timing.h"
 #include "sz_mult.h"
 
-int need_endwin = 0;
 char *iso639_lang = "en";
 
 void *Realloc(void *p, size_t n, size_t s, size_t z)

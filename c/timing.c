@@ -53,6 +53,7 @@ static const char sql_create2[] =
 "( seq TEXT NOT NULL,"
 " word_id INTEGER REFERENCES words(word),"
 " UNIQUE(seq, word_id) );\n"
+
 ;
 
 static const char sql_put_key[] =
