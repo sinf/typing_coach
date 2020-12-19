@@ -49,6 +49,9 @@ void read_wordlist(const char *fn)
 	unsigned long total_words=0;
 	size_t total_seqs=0;
 	int tmp=0;
+	#ifdef BATCH
+	int tmp2=0;
+	#endif
 
 	db_trans_begin();
 	while (fgets(buf, sizeof(buf), fp)) {
@@ -68,11 +71,19 @@ void read_wordlist(const char *fn)
 				if (db_put_word(buf, buf_bytes, &total_seqs)) {
 					total_words += 1;
 					tmp += 1;
-					if (tmp >= 500) {
+					if (tmp >= 1000) {
 						tmp = 0;
 						printf("\r%-lu words / %-lu sequences", total_words, (unsigned long) total_seqs);
 						fflush(stdout);
 					}
+					#ifdef BATCH
+					tmp2 += 1;
+					if (tmp2 >= BATCH) {
+						tmp2=0;
+						db_trans_end();
+						db_trans_begin();
+					}
+					#endif
 				}
 			}
 		}

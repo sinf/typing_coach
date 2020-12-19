@@ -28,7 +28,6 @@ static sqlite3_stmt
 	*st_put_key = 0,
 	*st_get_recent = 0,
 	*st_assoc_seq_word = 0,
-	*st_put_sm2 = 0,
 	*st_get_words = 0,
 	*st_get_words_r = 0,
 	*st_put_word = 0;
@@ -44,19 +43,10 @@ static const char sql_create[] =
 "CREATE TABLE IF NOT EXISTS words"
 "( word TEXT UNIQUE NOT NULL );\n"
 
-"CREATE TABLE IF NOT EXISTS sm2"
-"( seq TEXT UNIQUE NOT NULL,"
-" n REAL DEFAULT (0),"
-" EF REAL DEFAULT (2.5),"
-" I REAL DEFAULT (1));\n"
-;
-
-static const char sql_create2[] = 
 "CREATE TABLE IF NOT EXISTS seq_words"
 "( seq TEXT NOT NULL,"
 " word_id INTEGER REFERENCES words(word),"
 " UNIQUE(seq, word_id) );\n"
-
 ;
 
 static const char sql_put_key[] =
@@ -69,10 +59,7 @@ static const char sql_get_recent[] =
 " ORDER BY sequence DESC LIMIT ?";
 
 static const char sql_assoc_seq_word[] =
-"INSERT OR IGNORE INTO seq_words (seq,word_id) VALUES (?,?);";
-
-static const char sql_put_sm2[] =
-"INSERT OR IGNORE INTO sm2 (seq) VALUES (?);\n";
+"INSERT INTO seq_words (seq,word_id) VALUES (?,?);";
 
 static const char sql_get_words[] =
 "SELECT word FROM words WHERE rowid IN"
@@ -127,8 +114,6 @@ void db_open()
 	if (e != ok) db_fail("sqlite3_open");
 	e=sqlite3_exec(db, sql_create, NULL, NULL, NULL);
 	if (e != ok) db_fail("initializing tables");
-	e=sqlite3_exec(db, sql_create2, NULL, NULL, NULL);
-	if (e != ok) db_fail("initializing tables #2");
 
 #define PREP(x) \
 e=sqlite3_prepare_v2(db, sql_ ## x, sizeof(sql_ ## x), &(st_ ## x), NULL); \
@@ -136,7 +121,6 @@ if (e != ok) db_fail("preparing statement \"" #x "\"");
 	PREP(put_key);
 	PREP(get_recent);
 	PREP(assoc_seq_word);
-	PREP(put_sm2);
 	PREP(get_words);
 	PREP(get_words_r);
 	PREP(put_word);
@@ -429,7 +413,7 @@ size_t remove_neg_cost(KSeq *s, size_t count)
 
 /* put one sequence:word pair into database
 for later fetching a list of words that contain that sequence */
-static void db_put_word_seq(const char seq[], int seq_bytes, const char word[], int word_bytes, int64_t word_id)
+static size_t db_put_word_seq(const char seq[], int seq_bytes, const char word[], int word_bytes, int64_t word_id)
 {
 	assert(seq_bytes > 0);
 	assert(word_bytes > 0);
@@ -443,15 +427,9 @@ static void db_put_word_seq(const char seq[], int seq_bytes, const char word[], 
 	e = sqlite3_bind_int64(s, 2, word_id);
 	if (e != ok) db_fail("assoc_seq_word bind 2");
 	e = sqlite3_step(s);
-	if (e != SQLITE_DONE) db_fail("assoc_seq_word step");
 	sqlite3_reset(s);
 
-	s = st_put_sm2;
-	e = sqlite3_bind_text(s, 1, seq, seq_bytes, NULL);
-	if (e != ok) db_fail("put_sm2 bind");
-	e = sqlite3_step(s);
-	if (e != SQLITE_DONE) db_fail("put_sm2 step");
-	sqlite3_reset(s);
+	return e == SQLITE_DONE;
 }
 
 static int64_t db_put_word_1(const char word[], int word_bytes)
@@ -507,8 +485,8 @@ int db_put_word(const char word[], int word_bytes, size_t num_seqs[1])
 		for(int b=a; b<stop; ++b) {
 			const char *seq_end = mbc_begin[b] + mbc_bytes[b];
 			int seq_bytes = seq_end - seq_begin;
+			num_seqs[0] +=
 			db_put_word_seq(seq_begin, seq_bytes, word, word_bytes, word_id);
-			num_seqs[0] += 1;
 		}
 	}
 
