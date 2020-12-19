@@ -8,6 +8,7 @@ int show_menu(const char *title, const MenuEntry options[], int n, int sel[1])
 		dpy_begin();
 		dpy_print(0, C_STATUS, "%s", title);
 		for(int i=0; i<n; ++i) {
+			char mnemonic = "123456789 "[i<9 ? i : 9];
 			const char *xl="   ", *xr="   ";
 			int c = C_UNTYPED;
 			if (i==*sel) {
@@ -18,19 +19,36 @@ int show_menu(const char *title, const MenuEntry options[], int n, int sel[1])
 			if (options[i].toggle) {
 				// on/off toggle
 				const char *chk = *(options[i].toggle) ? "on " : "off";
-				dpy_print(1+i, c, "%s%-34.34s [%s]%s",
-					xl, options[i].label, chk, xr);
+
+				dpy_print(1+i, c, "%c%s%-34.34s [%s]%s",
+					mnemonic, xl, options[i].label, chk, xr);
 			} else {
 				// button
-				dpy_print(1+i, c, "%s%-40.40s%s",
-					xl, options[i].label, xr);
+				dpy_print(1+i, c, "%c%s%-40.40s%s",
+					mnemonic, xl, options[i].label, xr);
 			}
 		}
 		dpy_refresh();
 
 		const MenuEntry *cur = options + *sel;
 		int k = read_key();
+		int temp;
+
 		switch(k) {
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+			case '8':
+			case '9':
+				temp = k - '1';
+				if (temp < n)
+					*sel = temp;
+				break;
+
 			case KEY_UP:
 			case KEY_PPAGE:
 			case KEY_PREVIOUS:
