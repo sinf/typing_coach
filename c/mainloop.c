@@ -28,12 +28,44 @@ void show_slow_seq()
 	read_key();
 }
 
+static void test_pick_words(const char *seq, const int seq_b)
+{
+	const int limit = 20;
+	Word w[limit];
+	char buf[512];
+
+	dpy_begin();
+	dpy_print(0, C_STATUS, "Press any key to close");
+	dpy_print(1, C_STATUS, "Sequence bytes: %d\n", seq_b);
+	dpy_print(2, C_STATUS, "Sequence: %*s\n", seq_b, seq);
+
+	const int n = db_get_words(seq, seq_b, w, limit);
+
+	dpy_print(3, C_STATUS, "Words that contain this sequence:\n");
+	for(int i=0; i<n; ++i) {
+		int k = word_to_utf8(w+i, buf, sizeof buf);
+		buf[sizeof(buf)-1] = '\0';
+		dpy_print(4+i, C_NORMAL, "%*s\n", k, buf);
+	}
+
+	dpy_refresh();
+	read_key();
+}
+static void query_seq_words()
+{
+	char buf[256];
+	int n = read_input("Sequence to search", buf, sizeof buf);
+	if (n > 0)
+		test_pick_words(buf, n);
+}
+
 void main_menu()
 {
 	enum {
 		M_TM1=100,
 		M_TM2,
 		M_SLOW_SEQ,
+		M_QUERY_SEQ,
 		M_TODO,
 		M_EXIT,
 	};
@@ -43,6 +75,7 @@ void main_menu()
 		M_BUTTON("...", M_TODO),
 		M_TOGGLE("Automatic spacebar", &opt_auto_space),
 		M_BUTTON("Show slowest sequences", M_SLOW_SEQ),
+		M_BUTTON("Find words with sequence", M_QUERY_SEQ),
 		M_BUTTON("Exit program", M_EXIT),
 	};
 	static int sel=0;
@@ -63,6 +96,9 @@ void main_menu()
 				break;
 			case M_SLOW_SEQ:
 				show_slow_seq();
+				break;
+			case M_QUERY_SEQ:
+				query_seq_words();
 				break;
 			default:
 				break;

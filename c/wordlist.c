@@ -46,9 +46,11 @@ void read_wordlist(const char *fn)
 	}
 	const int k = 256;
 	char buf[k];
+	unsigned long total_words=0;
+	size_t total_seqs=0;
+	int tmp=0;
 
 	db_trans_begin();
-
 	while (fgets(buf, sizeof(buf), fp)) {
 
 		int buf_bytes = strlen(buf);
@@ -62,13 +64,24 @@ void read_wordlist(const char *fn)
 			w_to_lower(&w);
 
 			buf_bytes = word_to_utf8(&w, buf, k);
-			if (buf_bytes > 0)
-				db_put_word_seqs(buf, buf_bytes);
+			if (buf_bytes > 0) {
+				if (db_put_word(buf, buf_bytes, &total_seqs)) {
+					total_words += 1;
+					tmp += 1;
+					if (tmp >= 500) {
+						tmp = 0;
+						printf("\r%-lu words / %-lu sequences", total_words, (unsigned long) total_seqs);
+						fflush(stdout);
+					}
+				}
+			}
 		}
 	}
+	db_trans_end();
 	fclose(fp);
 
-	db_trans_end();
+	printf("\rNew words added: %lu           \n", total_words);
+	printf("New sequences added: %lu\n", (unsigned long) total_seqs);
 }
 
 void shuffle_words(Word *array, size_t n)

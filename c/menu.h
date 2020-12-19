@@ -13,6 +13,8 @@ typedef struct MenuEntry {
 int show_menu(const char *title, const MenuEntry options[], int n, int sel[1]);
 void loading_screen();
 
+int read_input(const char *title, char buf[], int bufsize);
+
 #endif
 
 

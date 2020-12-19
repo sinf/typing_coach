@@ -83,3 +83,33 @@ void loading_screen()
 	dpy_refresh();
 }
 
+int read_input(const char *title, char buf[], int bufsize)
+{
+	int len=0;
+
+	for(;;) {
+		buf[len] = '\0';
+
+		dpy_begin();
+		dpy_print(0, C_STATUS, "Press enter to submit");
+		dpy_print(1, C_STATUS, "%s", title);
+		dpy_print(2, C_NORMAL, "%*s_", len, buf);
+		dpy_refresh();
+
+		int k = read_key();
+		if (k == KEY_BACKSPACE) {
+			if (len > 0)
+				len -= 1;
+		} else if (k == KEY_ENTER || k == '\r' || k == '\n') {
+			break;
+		} else {
+			if (len < bufsize-1) {
+				buf[len++] = k;
+			}
+		}
+	}
+	buf[len] = '\0';
+
+	return len;
+}
+

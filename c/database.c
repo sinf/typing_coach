@@ -19,6 +19,7 @@
 
 char *database_path = NULL;
 long the_typing_counter = 0;
+static long words_table_rows=0;
 
 static sqlite3 *db = 0;
 
@@ -27,6 +28,7 @@ static sqlite3_stmt
 	*st_put_key = 0,
 	*st_get_recent = 0,
 	*st_assoc_seq_word = 0,
+	*st_put_sm2 = 0,
 	*st_get_words = 0,
 	*st_get_words_r = 0,
 	*st_put_word = 0;
@@ -60,9 +62,6 @@ static const char sql_create2[] =
 static const char sql_put_key[] =
 "INSERT INTO keystrokes (pressed,expected,delay_ms,timestamp) VALUES (?,?,?,?)";
 
-static const char sql_count_rows[] =
-"SELECT COUNT(*) FROM keystrokes;";
-
 static const char sql_get_recent[] =
 "SELECT sequence, pressed, expected, delay_ms, timestamp"
 " FROM keystrokes"
@@ -70,9 +69,10 @@ static const char sql_get_recent[] =
 " ORDER BY sequence DESC LIMIT ?";
 
 static const char sql_assoc_seq_word[] =
-"INSERT OR IGNORE INTO seq_words (seq,word_id) VALUES (?,"
-"(SELECT rowid FROM words WHERE word = ?));\n"
-"INSERT OR IGNORE INTO sm2 VALUES (?);\n";
+"INSERT OR IGNORE INTO seq_words (seq,word_id) VALUES (?,?);";
+
+static const char sql_put_sm2[] =
+"INSERT OR IGNORE INTO sm2 (seq) VALUES (?);\n";
 
 static const char sql_get_words[] =
 "SELECT word FROM words WHERE rowid IN"
@@ -83,7 +83,7 @@ static const char sql_get_words_r[] =
 "SELECT word FROM words ORDER BY RANDOM() LIMIT ?";
 
 static const char sql_put_word[] =
-"INSERT OR IGNORE INTO words (word) VALUES (?)";
+"INSERT INTO words (word) VALUES (?)";
 
 void db_fail(const char *origin)
 {
@@ -92,19 +92,29 @@ void db_fail(const char *origin)
 	strncpy(errmsg, sqlite3_errmsg(db), sizeof errmsg);
 	errmsg[sizeof(errmsg)-1] = '\0';
 
-	fail(
+	fprintf(stderr,
 	"Database error!\n"
 	"Where: %s\n"
 	"File: %s\n"
 	"Error:\n"
 	"%s\n",
 	origin, database_path, errmsg);
+
+	cleanup();
+	abort();
+	exit(1);
 }
 
-static int save_typing_counter(void *p, int num_cols, char *data[], char *colnames[])
+static int save_long(void *p, int num_cols, char *data[], char *colnames[])
 {
-	the_typing_counter = strtol(data[0], NULL, 10);
+	*(long*) p = strtol(data[0], NULL, 10);
 	return 0;
+}
+
+static void count_rows(const char *query, long *p)
+{
+	int e = sqlite3_exec(db, query, save_long, p, NULL);
+	if (e != SQLITE_OK) db_fail(query);
 }
 
 void db_open()
@@ -126,14 +136,14 @@ if (e != ok) db_fail("preparing statement \"" #x "\"");
 	PREP(put_key);
 	PREP(get_recent);
 	PREP(assoc_seq_word);
+	PREP(put_sm2);
 	PREP(get_words);
 	PREP(get_words_r);
 	PREP(put_word);
 #undef PREP
 
-	sqlite3_exec(db, sql_count_rows,
-		save_typing_counter, NULL, NULL);
-	if (e != ok) db_fail("count_rows");
+	count_rows("SELECT COUNT(*) FROM keystrokes", &the_typing_counter);
+	count_rows("SELECT COUNT(*) FROM words", &words_table_rows);
 }
 
 static int in_transaction=0;
@@ -419,7 +429,7 @@ size_t remove_neg_cost(KSeq *s, size_t count)
 
 /* put one sequence:word pair into database
 for later fetching a list of words that contain that sequence */
-static void db_put_word_seq(const char seq[], int seq_bytes, const char word[], int word_bytes)
+static void db_put_word_seq(const char seq[], int seq_bytes, const char word[], int word_bytes, int64_t word_id)
 {
 	assert(seq_bytes > 0);
 	assert(word_bytes > 0);
@@ -430,37 +440,48 @@ static void db_put_word_seq(const char seq[], int seq_bytes, const char word[], 
 	// seq --> word
 	e = sqlite3_bind_text(s, 1, seq, seq_bytes, NULL);
 	if (e != ok) db_fail("assoc_seq_word bind 1");
-	e = sqlite3_bind_text(s, 2, word, word_bytes, NULL);
+	e = sqlite3_bind_int64(s, 2, word_id);
 	if (e != ok) db_fail("assoc_seq_word bind 2");
-
-	// sm2
-	e = sqlite3_bind_text(s, 3, seq, seq_bytes, NULL);
-	if (e != ok) db_fail("assoc_seq_word bind 3");
-
 	e = sqlite3_step(s);
 	if (e != SQLITE_DONE) db_fail("assoc_seq_word step");
 	sqlite3_reset(s);
+
+	s = st_put_sm2;
+	e = sqlite3_bind_text(s, 1, seq, seq_bytes, NULL);
+	if (e != ok) db_fail("put_sm2 bind");
+	e = sqlite3_step(s);
+	if (e != SQLITE_DONE) db_fail("put_sm2 step");
+	sqlite3_reset(s);
 }
 
-static void db_put_word_1(const char word[], int word_bytes)
+static int64_t db_put_word_1(const char word[], int word_bytes)
 {
 	assert(word_bytes > 0);
 
 	sqlite3_stmt *s = st_put_word;
-	int e, ok=SQLITE_OK;
+	int e;
 
 	e = sqlite3_bind_text(s, 1, word, word_bytes, NULL);
-	if (e != ok) db_fail("put_word bind");
+	if (e != SQLITE_OK) db_fail("put_word bind");
+
 	e = sqlite3_step(s);
-	if (e != SQLITE_DONE) db_fail("put_word step");
 	sqlite3_reset(s);
+
+	if (e == SQLITE_DONE) 
+		return ++words_table_rows;
+	else
+		return -1; // word already exists in database
 }
 
-void db_put_word_seqs(const char word[], int word_bytes)
+int db_put_word(const char word[], int word_bytes, size_t num_seqs[1])
 {
 	assert(word_bytes > 0);
 
-	db_put_word_1(word, word_bytes);
+	int64_t word_id = db_put_word_1(word, word_bytes);
+	if (word_id < 0) {
+		// word already present in database
+		return 0;
+	}
 
 	const char *mbc_begin[WORD_MAX];
 	int mbc_bytes[WORD_MAX];
@@ -486,9 +507,12 @@ void db_put_word_seqs(const char word[], int word_bytes)
 		for(int b=a; b<stop; ++b) {
 			const char *seq_end = mbc_begin[b] + mbc_bytes[b];
 			int seq_bytes = seq_end - seq_begin;
-			db_put_word_seq(seq_begin, seq_bytes, word, word_bytes);
+			db_put_word_seq(seq_begin, seq_bytes, word, word_bytes, word_id);
+			num_seqs[0] += 1;
 		}
 	}
+
+	return 1;
 }
 
 int db_get_words(const char seq[], int seq_bytes, Word32 words[], int limit)
@@ -537,4 +561,11 @@ int db_get_words_random(Word32 words[], int limit)
 	sqlite3_reset(s);
 	return count;
 }
+
+void db_defrag()
+{
+	if (sqlite3_exec(db, "VACUUM", NULL, NULL, NULL) != SQLITE_OK)
+		db_fail("vacuum");
+}
+
 
