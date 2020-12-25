@@ -6,6 +6,7 @@
 #include "tm.h"
 #include "menu.h"
 #include "mainloop.h"
+#include "spambox.h"
 
 void show_slow_seq()
 {
@@ -37,7 +38,7 @@ static void test_pick_words(const char *seq, const int seq_b)
 	dpy_begin();
 	dpy_print(0, C_STATUS, "Press any key to close");
 	dpy_print(1, C_STATUS, "Sequence bytes: %d\n", seq_b);
-	dpy_print(2, C_STATUS, "Sequence: %*s\n", seq_b, seq);
+	dpy_print(2, C_STATUS, "Sequence: %.*s\n", seq_b, seq);
 
 	const int n = db_get_words(seq, seq_b, w, limit);
 
@@ -45,7 +46,7 @@ static void test_pick_words(const char *seq, const int seq_b)
 	for(int i=0; i<n; ++i) {
 		int k = word_to_utf8(w+i, buf, sizeof buf);
 		buf[sizeof(buf)-1] = '\0';
-		dpy_print(4+i, C_NORMAL, "%*s\n", k, buf);
+		dpy_print(4+i, C_NORMAL, "%.*s\n", k, buf);
 	}
 
 	dpy_refresh();
@@ -74,6 +75,7 @@ void main_menu()
 		M_BUTTON("...", M_TODO),
 		M_BUTTON("...", M_TODO),
 		M_TOGGLE("Automatic spacebar", &opt_auto_space),
+		M_TOGGLE("Advance despite typo", &sb_continue_on_typo),
 		M_BUTTON("Show slowest sequences", M_SLOW_SEQ),
 		M_BUTTON("Find words with sequence", M_QUERY_SEQ),
 		M_BUTTON("Exit program", M_EXIT),

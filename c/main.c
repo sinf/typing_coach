@@ -7,6 +7,8 @@
 #include <curses.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <errno.h>
+#include "debug.h"
 #include "prog_util.h"
 #include "database.h"
 #include "wordlist.h"
@@ -14,21 +16,60 @@
 #include "mainloop.h"
 
 static int quit_flag = 0;
+static const char *explicit_db_name = NULL;
+
+static void ask_create()
+{
+	for(;;) {
+		printf("Database named %s does not exist, create? Y/n: ",
+			explicit_db_name);
+		fflush(stdout);
+		char c = fgetc(stdin);
+		if (c == 'Y' || c == 'y')
+			break;
+		quit_msg(0, "Canceled");
+	}
+}
 
 void parse_args(int argc, char **argv)
 {
+	int d_flag=0;
+	struct stat s;
 	int c;
+	errno=0;
 	while((c = getopt(argc, argv, "hc:d:w:")) != -1) {
 		switch(c) {
+			case 'c':
+				if (d_flag) {
+					quit_msg(0, "Can only specify once -d or -c");
+				}
+				explicit_db_name = optarg;
+				d_flag=1;
+				get_path(database_path, "%s.db", optarg);
+				if (stat(database_path, &s) && errno == ENOENT) {
+					ask_create();
+					printf("Creating database: %s\n", database_path);
+				} else {
+					printf("Using database: %s\n", database_path);
+				}
+				db_open();
+				break;
+
 			case 'd':
-				database_path = optarg;
+				if (d_flag) {
+					quit_msg(0, "Can only specify once -d or -c");
+				}
+				get_path(database_path, "%s.db", optarg);
+				if (stat(database_path, &s)) {
+					quit_msg(errno, "Failed to access database file");
+				}
+				d_flag=1;
 				db_open();
 				break;
 
 			case 'w':
-				if (!database_path) {
-					fprintf(stderr, "Error: database not specified (-d FILENAME)");
-					exit(1);
+				if (!d_flag) {
+					quit_msg(0, "Error: database not specified (-d NAME)");
 				}
 				printf("Merging wordlist.. %s\n", optarg);
 				read_wordlist(optarg);
@@ -39,12 +80,13 @@ void parse_args(int argc, char **argv)
 				puts(
 "\nTyping coach\n"
 "git hash: " GIT_REF_STR "\n\n"
-"Usage: " EXE_NAME " [-d FILE] [-w FILE]\n\n"
+"Usage: " EXE_NAME " [-d/-c NAME] [-w FILENAME]\n\n"
 "Arguments\n"
 "  -h show this help text\n"
-"  -d FILENAME\n"
-"     specify the main sqlite3 database file\n"
-"     [~/.local/share/typingc/keystrokes.db]\n"
+"  -c NAME\n"
+"     create the main sqlite3 database name\n"
+"  -d NAME\n"
+"     specify the main sqlite3 database name (must exist)\n"
 "  -w FILENAME\n"
 "     merge wordlist to database from a file (utf8, one word per line)\n"
 );
@@ -56,32 +98,21 @@ void parse_args(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-	static char data_dir[1024], db_path[1024];
-	struct stat s;
-	char *home = getenv("HOME");
-
-	if (home) {
-		snprintf(data_dir, sizeof data_dir, "%s/.local/share/typingc", home);
-		if (stat(data_dir, &s)) {
-			mkdir(data_dir, 0755);
-		}
-		snprintf(db_path, sizeof db_path, "%s/typing.db", data_dir);
-		database_path = db_path;
-	}
-
 	setlocale(LC_ALL, "en_US.UTF-8");
+	find_config_dir();
+	debug_output_init();
+	get_path(database_path, "default.db");
+
 	parse_args(argc, argv);
 	db_open();
 
 	if (quit_flag) {
 		printf("Defragmenting database...\n");
 		db_defrag();
-
 		quit();
 	}
 
 	printf("Initialized\n");
-
 	cu_setup();
 	signal(SIGINT, quit_int);
 	main_menu();

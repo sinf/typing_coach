@@ -40,8 +40,10 @@ static void get_more_words()
 	loading_screen();
 	// potentially freeze for a moment when submitting keystrokes, querying keystrokes, and querying more training words
 
-	sb_clear();
 	db_trans_end();
+
+	sb_submit_sequences();
+	sb_clear();
 
 	tm_words();
 
@@ -66,7 +68,7 @@ static int tm_process_input()
 		delay_ms = (ts - last_ts) / 1000UL;
 	}
 
-	sb_putc(c);
+	sb_putc(c, delay_ms);
 
 	if (opt_auto_space)
 		sb_skip_spaces();

@@ -68,7 +68,7 @@ void read_wordlist(const char *fn)
 
 			buf_bytes = word_to_utf8(&w, buf, k);
 			if (buf_bytes > 0) {
-				if (db_put_word(buf, buf_bytes, &total_seqs)) {
+				if (db_put_word(buf, buf_bytes)) {
 					total_words += 1;
 					tmp += 1;
 					if (tmp >= 1000) {

@@ -39,6 +39,21 @@ void fail(const char *msg1, ...)
 	exit(1);
 }
 
+void quit_msg(int e, const char *msg1, ...)
+{
+	va_list ap;
+	va_start(ap, msg1);
+	cleanup();
+	if (e) {
+		const char *es = strerror(e);
+		fprintf(stderr, "errno=%d: %s\n", e, es);
+	}
+	vfprintf(stderr, msg1, ap);
+	fputc('\n', stderr);
+	va_end(ap);
+	exit(1);
+}
+
 void quit()
 {
 	cleanup();

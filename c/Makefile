@@ -4,7 +4,7 @@ EXE:=typing_c
 DEPS:=$(wildcard *.c) $(wildcard *.h)
 
 $(EXE): $(DEPS) tags
-	gcc -g -O2 -D_GNU_SOURCE -DEXE_NAME='"$(EXE)"' -DGIT_REF_STR='"$(shell git rev-parse HEAD)"' -std=c11 -Wall $(filter %.c,$^) -lm -lcurses -lsqlite3 -lunistring -o $@
+	gcc -g -O0 -D_GNU_SOURCE -DEXE_NAME='"$(EXE)"' -DGIT_REF_STR='"$(shell git rev-parse HEAD)"' -std=c11 -Wall $(filter %.c,$^) -lm -lcurses -lsqlite3 -lunistring -o $@
 
 tests: test_of test_xkb
 	@echo TEST: sz_mult.c

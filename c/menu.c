@@ -111,7 +111,7 @@ int read_input(const char *title, char buf[], int bufsize)
 		dpy_begin();
 		dpy_print(0, C_STATUS, "Press enter to submit");
 		dpy_print(1, C_STATUS, "%s", title);
-		dpy_print(2, C_NORMAL, "%*s_", len, buf);
+		dpy_print(2, C_NORMAL, "%.*s_", len, buf);
 		dpy_refresh();
 
 		int k = read_key();

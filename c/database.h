@@ -4,8 +4,9 @@
 #include <stdint.h>
 #include "kseq.h"
 #include "wordlist.h"
+#include "filepath.h"
 
-extern char *database_path;
+extern Filepath database_path;
 extern long the_typing_counter;
 
 void db_open();
@@ -36,7 +37,7 @@ put the word into database
 also break the word into all sequences and put into database
 increment num_seqs[0] accordingly
 return 0 on failure */
-int db_put_word(const char word[], int word_bytes, size_t num_seqs[1]);
+int db_put_word(const char word[], int word_bytes);
 
 /* Fetches words that contain a sequence (substring)
 seq, seq_bytes: UTF-8 string
@@ -49,6 +50,11 @@ int db_get_words(const char seq[], int seq_bytes, Word32 words[], int limit);
 int db_get_words_random(Word32 word_buffer[], int limit);
 
 void db_defrag();
+
+void db_put_seq_samples(
+	int num_ch,
+	const uint32_t ch[SPAMBOX_BUFLEN],
+	const int16_t delay_ms[SPAMBOX_BUFLEN] );
 
 #endif
 

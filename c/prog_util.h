@@ -1,6 +1,4 @@
 #pragma once
-#ifndef _PROG_UTIL_H
-#define _PROG_UTIL_H
 
 extern int need_endwin;
 extern char *iso639_lang;
@@ -13,14 +11,23 @@ void *Realloc(void *, size_t n, size_t s, size_t z);
 __attribute__((format(printf,1,2)))
 void fail(const char *msg1, ...);
 
+__attribute__((format(printf,2,3)))
+void quit_msg(int errNo, const char *msg1, ...);
+
 void cleanup();
 void quit();
 void quit_int(int i);
 
 struct Wordlist;
 extern struct Wordlist *the_wordlist;
-extern char *wordlist_path;
-extern char *database_path;
 
-#endif
+#define MIN(a,b) ((a)>(b) ? (b) : (a))
+#define MAX(a,b) ((a)<(b) ? (b) : (a))
+#define CLIP(x,lo,hi) MIN(MAX((x),(lo)),(hi))
+
+#define STR(x) #x
+#define STRTOK(x) STR(x)
+
+typedef int (*QSortCmp)(const void *a, const void *b);
+
 

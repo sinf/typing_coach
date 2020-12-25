@@ -3,12 +3,16 @@
 #include "wordlist.h"
 #include "spambox.h"
 #include "kseq.h"
+#include "database.h"
 
-#define BUFLEN 300
+#define BUFLEN SPAMBOX_BUFLEN
 
 struct Buf {
 	// characters the user needs to type
 	KeyCode ch[BUFLEN];
+
+	// delay for each character (or <0 for typo)
+	int16_t delay[BUFLEN];
 
 	// Each character is identified as part of some word. Word separators use NULL
 	struct Word *wp[BUFLEN];
@@ -20,7 +24,8 @@ struct Buf {
 	int len; //how many characters in buffer
 };
 
-static struct Buf cbuf = {{0},{0},{0},0,0};
+static struct Buf cbuf = {{0},{0},{0},{0},0,0};
+int sb_continue_on_typo=0;
 
 int sb_add_word(struct Word *w)
 {
@@ -32,6 +37,11 @@ int sb_add_word(struct Word *w)
 	Word w2 = w_strip(w);
 	sb_write(w2.len, w2.s, &w2);
 	return l0 != cbuf.len;
+}
+
+void sb_submit_sequences()
+{
+	db_put_seq_samples(cbuf.len, cbuf.ch, cbuf.delay);
 }
 
 void sb_clear()
@@ -70,18 +80,23 @@ int sb_end_reached()
 	return cbuf.pos >= cbuf.len;
 }
 
-void sb_putc(KeyCode c)
+void sb_putc(KeyCode c, int d)
 {
 	if (sb_end_reached())
 		return;
 	if (c == sb_expected()) {
 		// typed ok
-		if (cbuf.color[cbuf.pos] != C_MISTAKE)
+		if (cbuf.color[cbuf.pos] != C_MISTAKE) {
 			cbuf.color[cbuf.pos] = C_TYPED;
+			cbuf.delay[cbuf.pos] = d;
+		}
 		cbuf.pos += 1;
 	} else {
 		// typed wrong
 		cbuf.color[cbuf.pos] = C_MISTAKE;
+		cbuf.delay[cbuf.pos] = -1;
+		if (sb_continue_on_typo)
+			cbuf.pos += 1;
 	}
 }
 
