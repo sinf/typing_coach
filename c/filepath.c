@@ -14,9 +14,16 @@ static struct stat data_dir_s;
 
 #define DATADIR_BASENAME "typingc"
 
+static void check_d()
+{
+	if (!(data_dir_s.st_mode & S_IFDIR))
+		quit_msg(0, "expected a directory: %s", data_dir);
+}
+
 void find_config_dir()
 {
 	const char *attempts[][2] = {
+		{"TYPINGC_DATA_DIR", ""},
 		{"XDG_DATA_HOME", "/" DATADIR_BASENAME},
 		{"HOME", "/.local/share/" DATADIR_BASENAME},
 	};
@@ -28,18 +35,22 @@ void find_config_dir()
 			if (!p) continue;
 		}
 		snprintf(data_dir, sizeof data_dir, "%s%s", p, attempts[i][1]);
-		if (stat(data_dir, &data_dir_s)) {
-			if (errno == ENOENT) {
-				mkdir(data_dir, 0700);
-			} else {
-				fail("failed to stat data directory: %s", data_dir);
-			}
+		errno=0;
+		if (!stat(data_dir, &data_dir_s)) {
+			check_d();
+			return;
 		}
-		break;
+		if (errno == ENOENT) {
+			mkdir(data_dir, 0700);
+			int e=errno;
+			if (stat(data_dir, &data_dir_s))
+				quit_msg(e, "failed to create data directory: %s", data_dir);
+			check_d();
+			return;
+		}
 	}
-	if (stat(data_dir, &data_dir_s)) {
-		fail("failed to stat data directory: %s", data_dir);
-	}
+
+	quit_msg(0, "Program data directory not found. Set any of $XDG_DATA_HOME, $HOME or $TYPINGC_DATA_DIR");
 }
 
 void get_path(Filepath p, const char *fmt, ...)
