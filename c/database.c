@@ -15,6 +15,24 @@
 #include "prog_util.h"
 #include "debug.h"
 
+#define sq3_bind_int(s,i,x) \
+	if (sqlite3_bind_int((s),(i),(x)) != SQLITE_OK) \
+		db_fail("bind_int(column=%d,value=%d)",(i),(x))
+#define sq3_bind_int64(s,i,x) \
+	if (sqlite3_bind_int64((s),(i),(x)) != SQLITE_OK) \
+		db_fail("bind_int64(column=%d,value=%ld)",(i),(long)(x))
+#define sq3_bind_double(s,i,x) \
+	if (sqlite3_bind_double((s),(i),(x)) != SQLITE_OK) \
+		db_fail("bind_double(column=%d,value=%g)",(i),(x))
+#define sq3_bind_text(s,i,ptr,size) \
+	if (sqlite3_bind_text((s),(i),(ptr),(size),NULL) != SQLITE_OK) \
+		db_fail("bind_text(column=%d,value=%.*s)",(i),(int)(size),(ptr))
+#define sq3_bind_blob(s,i,ptr,size) \
+	if (sqlite3_bind_blob((s),(i),(ptr),(size),SQLITE_STATIC) != SQLITE_OK) \
+		db_fail("bind_blob(column=%d,size=%lu)",(i),(unsigned long)(size))
+#define sq3_step(s,code) \
+	if (sqlite3_step(s) != (code)) db_fail("step")
+
 // sqlite3_bind_.. use 0-based indexing
 // sqlite3_column_.. use 1-based indexing. WTF!?! beware
 
@@ -67,7 +85,7 @@ so big and fat table */
 ;
 
 static const char sql_init_hist[] =
-"INSERT INTO seq_hist (seq) VALUES (?)";
+"INSERT OR IGNORE INTO seq_hist (seq) VALUES (?)";
 
 static const char sql_update_hist[] =
 "UPDATE seq_hist SET hist=?, samples=?, delay_mean=?, delay_stdev=?, typo_mean=?, cost_func=? WHERE rowid=?";
@@ -195,17 +213,12 @@ void db_close()
 void db_put(KeyCode pressed, KeyCode expected, int delay_ms)
 {
 	sqlite3_stmt *s = st_put_key;
-	int e, ok=SQLITE_OK;
-	e = sqlite3_bind_int(s, 1, pressed);
-	if (e != ok) db_fail("put_key bind 1");
-	e = sqlite3_bind_int(s, 2, expected);
-	if (e != ok) db_fail("put_key bind 2");
-	e = sqlite3_bind_int(s, 3, delay_ms);
-	if (e != ok) db_fail("put_key bind 3");
-	e = sqlite3_bind_int64(s, 4, time(0));
-	if (e != ok) db_fail("put_key bind 4");
-	e = sqlite3_step(s);
-	if (e != SQLITE_DONE) db_fail("put_key sqlite3_step");
+	const int64_t t=time(0);
+	sq3_bind_int(s, 1, pressed);
+	sq3_bind_int(s, 2, expected);
+	sq3_bind_int(s, 3, delay_ms);
+	sq3_bind_int64(s, 4, t);
+	sq3_step(s, SQLITE_DONE);
 	sqlite3_reset(s);
 	the_typing_counter += 1;
 }
@@ -451,28 +464,20 @@ static void db_put_word_seq(const char seq[], int seq_bytes, const char word[], 
 	assert(word_bytes > 0);
 
 	sqlite3_stmt *s = st_assoc_seq_word;
-	int e, ok=SQLITE_OK;
 
 	// seq --> word
-	e = sqlite3_bind_text(s, 1, seq, seq_bytes, NULL);
-	if (e != ok) db_fail("assoc_seq_word bind 1");
-	e = sqlite3_bind_int64(s, 2, word_id);
-	if (e != ok) db_fail("assoc_seq_word bind 2");
-	e = sqlite3_step(s);
-	if (e != SQLITE_DONE) db_fail("assoc_seq_word step");
+	sq3_bind_text(s, 1, seq, seq_bytes);
+	sq3_bind_int64(s, 2, word_id);
+	sq3_step(s, SQLITE_DONE);
 	sqlite3_reset(s);
 }
 
 static int64_t db_put_word_1(const char word[], int word_bytes)
 {
 	assert(word_bytes > 0);
-
 	sqlite3_stmt *s = st_put_word;
-	int e;
-
-	e = sqlite3_bind_text(s, 1, word, word_bytes, NULL);
-	if (e != SQLITE_OK) db_fail("put_word bind");
-	e = sqlite3_step(s);
+	sq3_bind_text(s, 1, word, word_bytes);
+	const int e = sqlite3_step(s);
 	sqlite3_reset(s);
 
 	if (e == SQLITE_DONE) 
@@ -484,9 +489,8 @@ static int64_t db_put_word_1(const char word[], int word_bytes)
 static void put_seq_hist(const char word[], int word_bytes)
 {
 	sqlite3_stmt *st = st_init_hist;
-	int e=sqlite3_bind_text(st, 1, word, word_bytes, NULL);
-	if (e != SQLITE_OK) db_fail("init_hist bind");
-	sqlite3_step(st);
+	sq3_bind_text(st, 1, word, word_bytes);
+	sq3_step(st, SQLITE_DONE);
 	sqlite3_reset(st);
 }
 
@@ -541,16 +545,12 @@ int db_get_words(const char seq[], int seq_bytes, Word32 words[], int limit)
 	assert(words!=NULL);
 
 	sqlite3_stmt *s = st_get_words;
-	int e;
 	int count=0;
 
-	e = sqlite3_bind_text(s, 1, seq, seq_bytes, NULL);
-	if (e != SQLITE_OK) db_fail("get_words bind 1");
+	sq3_bind_text(s, 1, seq, seq_bytes);
+	sq3_bind_int(s, 2, limit);
 
-	e = sqlite3_bind_int(s, 2, limit);
-	if (e != SQLITE_OK) db_fail("get_words bind 2");
-
-	while(count < limit && (e=sqlite3_step(s))==SQLITE_ROW) {
+	while(count < limit && sqlite3_step(s)==SQLITE_ROW) {
 		const char *word = (const char*) sqlite3_column_text(s, 0);
 		assert(word != NULL);
 		words[count] = utf8_to_word(word, strlen(word));
@@ -567,8 +567,7 @@ int db_get_words_random(Word32 words[], int limit)
 	int e;
 	int count=0;
 
-	e = sqlite3_bind_int(s, 1, limit);
-	if (e != SQLITE_OK) db_fail("get_words_r bind");
+	sq3_bind_int(s, 1, limit);
 
 	while(count < limit && (e=sqlite3_step(s))==SQLITE_ROW) {
 		const char *word = (const char*) sqlite3_column_text(s, 0);
@@ -749,8 +748,7 @@ void db_put_seq_samples(
 	}
 
 	for(int i=0; i<num_uniq; ++i) {
-		e=sqlite3_bind_text(st, 1+i, (char*)(uniq[i]->s), uniq[i]->s_len, NULL);
-		if (e != SQLITE_OK) db_fail("line " STRTOK(__LINE__) " bind");
+		sq3_bind_text(st, 1+i, (char*)(uniq[i]->s), uniq[i]->s_len);
 	}
 
 	// get rows
@@ -797,22 +795,16 @@ void db_put_seq_samples(
 			stat.delay_mean, stat.delay_stdev, stat.typo_mean, stat.cost_func);
 
 		st = st_update_hist;
-		e=sqlite3_bind_blob(st, 1, hist+i, sizeof *hist, SQLITE_STATIC);
-		if (e != SQLITE_OK) db_fail("hist_update bind 1");
-		e=sqlite3_bind_int(st, 2, hist[i].samples);
-		if (e != SQLITE_OK) db_fail("hist_update bind 2");
-		e=sqlite3_bind_double(st, 3, stat.delay_mean);
-		if (e != SQLITE_OK) db_fail("hist_update bind 2");
-		e=sqlite3_bind_double(st, 4, stat.delay_stdev);
-		if (e != SQLITE_OK) db_fail("hist_update bind 3");
-		e=sqlite3_bind_double(st, 5, stat.typo_mean);
-		if (e != SQLITE_OK) db_fail("hist_update bind 4");
-		e=sqlite3_bind_double(st, 6, stat.cost_func);
-		if (e != SQLITE_OK) db_fail("hist_update bind 5");
-		e=sqlite3_bind_int64(st, 7, row_id[i]);
-		if (e != SQLITE_OK) db_fail("hist_update bind 6");
-		e=sqlite3_step(st);
-		if (sqlite3_step(st) != SQLITE_DONE) db_fail("hist_update step");
+
+		sq3_bind_blob(st, 1, hist+i, sizeof *hist);
+		sq3_bind_int(st, 2, hist[i].samples);
+		sq3_bind_double(st, 3, stat.delay_mean);
+		sq3_bind_double(st, 4, stat.delay_stdev);
+		sq3_bind_double(st, 5, stat.typo_mean);
+		sq3_bind_double(st, 6, stat.cost_func);
+		sq3_bind_int64(st, 7, row_id[i]);
+
+		sq3_step(st, SQLITE_DONE);
 		sqlite3_reset(st_update_hist);
 	}
 	db_trans_end();
