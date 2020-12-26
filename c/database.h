@@ -51,9 +51,9 @@ int db_get_words_random(Word32 word_buffer[], int limit);
 void db_defrag();
 
 void db_put_seq_samples(
-	int num_ch,
-	const uint32_t ch[SPAMBOX_BUFLEN],
-	const int16_t delay_ms[SPAMBOX_BUFLEN] );
+	size_t num_ch,
+	const uint32_t ch[],
+	const int16_t delay_ms[] );
 
 #endif
 
