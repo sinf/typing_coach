@@ -103,15 +103,46 @@ static const char sql_assoc_seq_word[] =
 "INSERT OR IGNORE INTO seq_words (seq,word_id) VALUES (?,?);";
 
 static const char sql_get_words[] =
-"SELECT word FROM words WHERE rowid IN"
-"(SELECT word_id FROM seq_words WHERE (seq = ?))"
-"ORDER BY RANDOM() LIMIT ?";
+"SELECT word FROM words WHERE rowid IN\n"
+" (SELECT word_id FROM seq_words WHERE (seq = ?))\n"
+" ORDER BY RANDOM() LIMIT ?";
 
 static const char sql_get_words_r[] =
 "SELECT word FROM words ORDER BY RANDOM() LIMIT ?";
 
 static const char sql_put_word[] =
 "INSERT INTO words (word) VALUES (?)";
+
+static const char sql_cleanup_code[] =
+/*
+lengthy code to trim seq_words to have at most ~2000 words per sequence
+because short sequences like "e" are included in too many words
+*/
+#define TRIM_SEQ_WORDS 1
+#if TRIM_SEQ_WORDS
+/* temp1: aggregate (seq, word count) */
+"CREATE TEMP TABLE temp1 (seq TEXT UNIQUE NOT NULL, n INTEGER);\n"
+"INSERT INTO temp1 SELECT seq,COUNT(seq) FROM seq_words GROUP BY seq;\n"
+
+/* only keep sequences that have way too many words */
+"DELETE FROM temp1 WHERE n<2100;\n"
+
+/* temp2: r=rowid in seq_words to drop, p=fraction of rows to drop */
+"CREATE TEMP TABLE temp2 (r INTEGER PRIMARY KEY,p REAL);\n"
+"INSERT INTO temp2 (r,p)\n"
+" SELECT ll.rowid, (rr.n-2000.0)/rr.n\n"
+" FROM seq_words ll LEFT JOIN temp1 rr WHERE ll.seq=rr.seq;\n"
+
+/* keep rows with probability proportional to p */
+"DELETE FROM temp2 WHERE\n"
+/* random float in range [0.0, 1.0] */
+" (RANDOM()/65536+140737488355328)/281474976710655.0 > p;\n"
+
+"DELETE FROM seq_words WHERE rowid IN (SELECT r FROM temp2);\n"
+"DROP TABLE temp1;\n"
+"DROP TABLE temp2;\n"
+#endif
+"VACUUM;\n";
 
 __attribute__((format(printf,4,5)))
 void db_fail_x(const char *file, const char *fun, int ln, const char *fmt, ...)
@@ -581,8 +612,8 @@ int db_get_words_random(Word32 words[], int limit)
 
 void db_defrag()
 {
-	if (sqlite3_exec(db, "VACUUM", NULL, NULL, NULL) != SQLITE_OK)
-		db_fail("vacuum");
+	if (sqlite3_exec(db, sql_cleanup_code, NULL, NULL, NULL) != SQLITE_OK)
+		db_fail("db_defrag");
 }
 
 static int question_marks(char buf[], int min_count)
