@@ -79,6 +79,13 @@ could be reconstructed from 'keystrokes' table */
 " cost_func REAL(0),"
 " hist BLOB DEFAULT NULL);\n"
 
+/* useful for getting all alphabet in the dictionary */
+"CREATE VIEW IF NOT EXISTS alpha(ch)"
+" AS SELECT seq FROM seq_hist WHERE LENGTH(seq)==1;\n"
+
+"CREATE TABLE IF NOT EXISTS alpha_deck"
+"( ch TEXT UNIQUE NOT NULL, typed INTEGER(0) );\n"
+
 /* map sequence-->word
 for fast training words retrieval based on sequence
 so big and fat table */
@@ -87,6 +94,28 @@ so big and fat table */
 " word_id INTEGER REFERENCES words(word),"
 " UNIQUE(seq, word_id) );\n"
 ;
+
+static const char sql_alpha_update[] =
+"INSERT INTO alpha_deck\n"
+// any character that is in alphabet but not in the deck
+"(SELECT ch FROM alpha EXCEPT SELECT ch FROM alpha_deck LIMIT 2)\n"
+"WHERE\n"
+// only if already typed all characters in deck at least 10 times
+"(NOT EXISTS (SELECT 1 FROM alpha_deck WHERE typed < 10))\n"
+// only if user is competent enough at typing all characters in the deck
+"AND EXISTS (SELECT 1 FROM seq_hist WHERE samples>=10\n"
+" AND seq IN (SELECT ch FROM alpha_deck)\n"
+" AND delay_mean<500 AND delay_stdev<500 AND typo_mean<0.1);\n";
+
+static const char sql_alpha_type[] =
+"UPDATE alpha_deck SET typed=typed+1 WHERE ch=?";
+
+static const char sql_alpha_get[] =
+"SELECT word FROM words WHERE rowid IN\n"
+" (SELECT word_id FROM seq_words WHERE\n"
+"  (seq IN SELECT ch FROM alpha_deck)\n"
+" )\n"
+" ORDER BY RANDOM() LIMIT ?";
 
 static const char sql_insert_hist[] =
 "INSERT OR IGNORE INTO seq_hist\n"
@@ -124,7 +153,7 @@ static const char sql_put_word[] =
 
 static const char sql_cleanup_code[] =
 /*
-lengthy code to trim seq_words to have at most ~2000 words per sequence
+lengthy code to trim seq_words to have at most ~1000 words per sequence
 because short sequences like "e" are included in too many words
 */
 #define TRIM_SEQ_WORDS 1
@@ -596,8 +625,9 @@ int db_get_words(const char seq[], int seq_bytes, Word32 words[], int limit)
 
 	while(count < limit && sqlite3_step(s)==SQLITE_ROW) {
 		const char *word = (const char*) sqlite3_column_text(s, 0);
+		int len = sqlite3_column_bytes(s, 0);
 		assert(word != NULL);
-		words[count] = utf8_to_word(word, strlen(word));
+		words[count] = utf8_to_word(word, len);
 		count += 1;
 	}
 
@@ -615,7 +645,8 @@ int db_get_words_random(Word32 words[], int limit)
 
 	while(count < limit && (e=sqlite3_step(s))==SQLITE_ROW) {
 		const char *word = (const char*) sqlite3_column_text(s, 0);
-		words[count] = utf8_to_word(word, strlen(word));
+		int len = sqlite3_column_bytes(s, 0);
+		words[count] = utf8_to_word(word, len);
 		count += 1;
 	}
 

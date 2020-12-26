@@ -1,7 +1,7 @@
 #pragma once
 
 extern int need_endwin;
-extern char *iso639_lang;
+extern const char *iso639_lang;
 
 #define fail_oom() fail("allocation failed")
 

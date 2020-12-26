@@ -1,9 +1,12 @@
+#include <stdlib.h>
 #include <unictype.h>
+#include <unistr.h>
 #include "dpy.h"
 #include "wordlist.h"
 #include "spambox.h"
 #include "kseq.h"
 #include "database.h"
+#include "debug.h"
 
 #define BUFLEN SPAMBOX_BUFLEN
 
@@ -36,6 +39,12 @@ int sb_add_word(struct Word *w)
 	}
 	Word w2 = w_strip(w);
 	sb_write(w2.len, w2.s, &w2);
+
+	size_t l=0;
+	char *s8 = (char*) u32_to_u8(w->s, w->len, NULL, &l);
+	debug_msg("append to spambox: \"%.*s\"\n", (int) l, s8);
+	free(s8);
+
 	return l0 != cbuf.len;
 }
 

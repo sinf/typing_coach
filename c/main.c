@@ -107,12 +107,18 @@ void parse_args(int argc, char **argv)
 int main(int argc, char **argv)
 {
 	setlocale(LC_ALL, "en_US.UTF-8");
+
+	// find files
 	find_config_dir();
-	debug_output_init();
 	set_db_path("default");
 	get_path(the_settings_path, "settings.ini");
+
 	load_settings();
 
+	// first need settings for the log filename
+	debug_output_init();
+
+	// maybe override settings
 	parse_args(argc, argv);
 	save_settings();
 	db_open();

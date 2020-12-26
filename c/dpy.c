@@ -1,7 +1,9 @@
+#include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <unictype.h>
 #include <curses.h>
+#include <unictype.h>
+#include <unistr.h>
 #include "kseq.h"
 #include "dpy.h"
 
@@ -60,7 +62,10 @@ void dpy_write_color(int y, const uint32_t s[], const int colors[], int len, int
 			attron(COLOR_PAIR(c));
 		}
 		if (curs == i) attron(COLOR_PAIR(c|CURSOR_BIT));
-		addch(s[i]);
+		size_t l=0;
+		char *s8 = (char*) u32_to_u8(s+i, 1, NULL, &l);
+		addnstr(s8, l);
+		free(s8);
 		if (curs == i) attron(COLOR_PAIR(c));
 	}
 	// note: whatever color was last used is still on
@@ -109,6 +114,8 @@ void dpy_refresh(void)
 
 int read_key(void)
 {
-	return getch();
+	wint_t c=0;
+	while (get_wch(&c) == ERR) ;
+	return c;
 }
 

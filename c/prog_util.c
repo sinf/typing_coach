@@ -9,7 +9,7 @@
 #include "sz_mult.h"
 #include "persist.h"
 
-char *iso639_lang = "en";
+const char *iso639_lang = "en";
 
 void *Realloc(void *p, size_t n, size_t s, size_t z)
 {

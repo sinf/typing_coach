@@ -3,8 +3,8 @@ PREFIX?=/usr/local
 EXE:=typing_c
 DEPS:=$(wildcard *.c) $(wildcard *.h)
 
-$(EXE): $(DEPS) tags
-	gcc -g -O0 -D_GNU_SOURCE -DEXE_NAME='"$(EXE)"' -DGIT_REF_STR='"$(shell git rev-parse HEAD)"' -std=c11 -Wall $(filter %.c,$^) -lm -lcurses -lsqlite3 -lunistring -o $@
+$(EXE): $(DEPS) tags Makefile
+	gcc -g -O0 -D_GNU_SOURCE -DEXE_NAME='"$(EXE)"' -DGIT_REF_STR='"$(shell git rev-parse HEAD)"' -std=c11 -Wall $(filter %.c,$^) $(shell pkg-config --cflags --libs ncursesw) -lm -lsqlite3 -lunistring -o $@
 
 tests: test_of test_xkb
 	@echo TEST: sz_mult.c
@@ -19,7 +19,7 @@ test_xkb: layout.c layout.h
 	gcc -g -O2 -D_GNU_SOURCE -D_TEST_XKB -std=c11 -Wall $< -o $@
 
 get:
-	sudo apt install libncurses-dev libsqlite3-dev ctags cscope libunistring-dev
+	sudo apt install libncursesw5-dev libsqlite3-dev ctags cscope libunistring-dev
 
 tags: $(DEPS)
 	@rm -f tags cscope.out
