@@ -738,6 +738,9 @@ void db_put_seq_samples(
 	// build SELECT query
 	const char *query;
 	int query_len;
+	if (num_uniq > 999) {
+		fail("sql query can't have >999 host parameters but now we have %d sequences to submit", num_uniq);
+	}
 	query = make_query_q1(&query_len, num_uniq);
 
 	st = NULL;
