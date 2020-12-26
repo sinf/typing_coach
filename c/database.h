@@ -4,9 +4,8 @@
 #include <stdint.h>
 #include "kseq.h"
 #include "wordlist.h"
-#include "filepath.h"
 
-extern Filepath database_path;
+extern const char* database_path;
 extern long the_typing_counter;
 
 void db_open();

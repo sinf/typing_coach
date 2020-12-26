@@ -1,17 +1,14 @@
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include "debug.h"
 
 static FILE *debug_file=NULL;
+const char *debug_file_path=NULL;
 
 void debug_output_init(void)
 {
-	const char *path = "/tmp/typingc/debug";
-	struct stat s;
-	if (!stat(path, &s)) {
-		debug_file = fopen(path, "w");
+	if (debug_file_path && debug_file_path[0]) {
+		debug_file = fopen(debug_file_path, "w");
 	}
 }
 

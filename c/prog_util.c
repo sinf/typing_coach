@@ -7,6 +7,7 @@
 #include "prog_util.h"
 #include "database.h"
 #include "sz_mult.h"
+#include "persist.h"
 
 char *iso639_lang = "en";
 
@@ -21,8 +22,8 @@ void *Realloc(void *p, size_t n, size_t s, size_t z)
 void cleanup()
 {
 	db_close();
-	if (need_endwin)
-		endwin();
+	if (need_endwin) endwin();
+	save_settings();
 }
 
 void fail(const char *msg1, ...)

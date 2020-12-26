@@ -36,7 +36,7 @@
 // sqlite3_bind_.. use 0-based indexing
 // sqlite3_column_.. use 1-based indexing. WTF!?! beware
 
-Filepath database_path = "";
+const char *database_path = "";
 long the_typing_counter = 0;
 static long words_table_rows=0;
 
@@ -125,12 +125,12 @@ because short sequences like "e" are included in too many words
 "INSERT INTO temp1 SELECT seq,COUNT(seq) FROM seq_words GROUP BY seq;\n"
 
 /* only keep sequences that have way too many words */
-"DELETE FROM temp1 WHERE n<2100;\n"
+"DELETE FROM temp1 WHERE n<1100;\n"
 
 /* temp2: r=rowid in seq_words to drop, p=fraction of rows to drop */
 "CREATE TEMP TABLE temp2 (r INTEGER PRIMARY KEY,p REAL);\n"
 "INSERT INTO temp2 (r,p)\n"
-" SELECT ll.rowid, (rr.n-2000.0)/rr.n\n"
+" SELECT ll.rowid, (rr.n-1000.0)/rr.n\n"
 " FROM seq_words ll LEFT JOIN temp1 rr WHERE ll.seq=rr.seq;\n"
 
 /* keep rows with probability proportional to p */
@@ -150,17 +150,13 @@ void db_fail_x(const char *file, const char *fun, int ln, const char *fmt, ...)
 	va_list a;
 	va_start(a, fmt);
 
-	// copy SQL message to stack because fail() calls db_close()
-	char errmsg[2048];
-	strncpy(errmsg, sqlite3_errmsg(db), sizeof errmsg);
-	errmsg[sizeof(errmsg)-1] = '\0';
-
 	fprintf(stderr,
 	"Database error!\n"
 	"Database: %s\n"
+	"Reason: %s\n"
 	"Where: %s:%d: %s()\n"
 	"What:\n",
-	database_path, file, ln, fun);
+	database_path, sqlite3_errmsg(db), file, ln, fun);
 
 	vfprintf(stderr, fmt, a);
 	va_end(a);
@@ -197,7 +193,8 @@ void db_open()
 
 #define PREP(x) \
 e=sqlite3_prepare_v2(db, sql_ ## x, sizeof(sql_ ## x), &(st_ ## x), NULL); \
-if (e != ok) db_fail("preparing statement \"" #x "\"");
+if (e != ok) db_fail("preparing statement \"%s\"\n", #x)
+
 	PREP(put_key);
 	PREP(get_recent);
 	PREP(assoc_seq_word);

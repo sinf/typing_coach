@@ -1,5 +1,7 @@
 #pragma once
 
+extern const char *debug_file_path;
+
 void debug_output_init(void);
 
 __attribute__((format(printf,4,5)))

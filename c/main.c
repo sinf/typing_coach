@@ -14,6 +14,7 @@
 #include "wordlist.h"
 #include "dpy.h"
 #include "mainloop.h"
+#include "persist.h"
 
 static int quit_flag = 0;
 static const char *explicit_db_name = NULL;
@@ -31,6 +32,13 @@ static void ask_create()
 	}
 }
 
+static void set_db_path(const char *name)
+{
+	static Filepath fp="";
+	get_path(fp, "%s.db", name);
+	database_path = fp;
+}
+
 void parse_args(int argc, char **argv)
 {
 	int d_flag=0;
@@ -45,7 +53,7 @@ void parse_args(int argc, char **argv)
 				}
 				explicit_db_name = optarg;
 				d_flag=1;
-				get_path(database_path, "%s.db", optarg);
+				set_db_path(optarg);
 				if (stat(database_path, &s) && errno == ENOENT) {
 					ask_create();
 					printf("Creating database: %s\n", database_path);
@@ -59,7 +67,7 @@ void parse_args(int argc, char **argv)
 				if (d_flag) {
 					quit_msg(0, "Can only specify once -d or -c");
 				}
-				get_path(database_path, "%s.db", optarg);
+				set_db_path(optarg);
 				if (stat(database_path, &s)) {
 					quit_msg(errno, "Failed to access database file");
 				}
@@ -101,9 +109,12 @@ int main(int argc, char **argv)
 	setlocale(LC_ALL, "en_US.UTF-8");
 	find_config_dir();
 	debug_output_init();
-	get_path(database_path, "default.db");
+	set_db_path("default");
+	get_path(the_settings_path, "settings.ini");
+	load_settings();
 
 	parse_args(argc, argv);
+	save_settings();
 	db_open();
 
 	if (quit_flag) {
