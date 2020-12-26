@@ -629,90 +629,231 @@ void db_defrag()
 		db_fail("db_defrag");
 }
 
-static void update_seq_hist_1(const char *s8, size_t s8_len, int delay)
+static int question_marks(char buf[], int min_count)
 {
-	sqlite3_stmt *s=st_get_hist;
-	KSeqHist hist;
-	KSeqStats stat;
-	int64_t rowid=-1;
-
-	delay = CLIP(delay, -1, 0x7fff);
-
-	assert(!in_transaction);
-
-	// fetch old history
-	sq3_bind_text(s, 1, s8, s8_len);
-	if (sqlite3_step(s) == SQLITE_ROW) {
-		rowid = sqlite3_column_int64(s, 1);
-		const void *blob = sqlite3_column_blob(s, 2);
-		if (blob) {
-			size_t sz = sqlite3_column_bytes(s, 2);
-			if (sz != sizeof hist) db_fail("KSeqHist size mismatch");
-			memcpy(&hist, blob, sizeof hist);
-		} else {
-			memset(&hist, 0, sizeof hist);
-		}
-		s = st_update_hist;
-	} else {
-		// need to insert a new mostly empty history
-		memset(&hist, 0, sizeof hist);
-		s = st_insert_hist;
+	int i;
+	for(i=0; i<min_count; i+=4) {
+		char *p = buf + 2*i;
+		p[0] = '?'; p[1] = ',';
+		p[2] = '?'; p[3] = ',';
+		p[4] = '?'; p[5] = ',';
+		p[6] = '?'; p[7] = ',';
 	}
-	sqlite3_reset(st_get_hist);
-
-	kseq_hist_push(&hist, delay);
-	stat = kseq_hist_stats(&hist);
-
-	sq3_bind_blob(s, 1, &hist, sizeof hist);
-	sq3_bind_int(s, 2, hist.samples);
-	sq3_bind_double(s, 3, stat.delay_mean);
-	sq3_bind_double(s, 4, stat.delay_stdev);
-	sq3_bind_double(s, 5, stat.typo_mean);
-	sq3_bind_double(s, 6, stat.cost_func);
-
-	if (s == st_update_hist) {
-		sq3_bind_int64(s, 7, rowid);
-	} else {
-		sq3_bind_text(s, 7, s8, s8_len);
-	}
-
-	sq3_step(s, SQLITE_DONE);
-	sqlite3_reset(s);
+	i = 2*min_count - 1;
+	return i;
 }
 
-void db_put_seq_samples(
-	size_t num_ch,
-	const uint32_t ch[],
-	const int16_t delay_ms[] )
+static const char* make_query_q1(int query_len[1], size_t num_seqs)
 {
-	size_t a, b, b_stop;
+	#define MAX_SPAMBOX_SEQ SUBSTR_COUNT(SPAMBOX_BUFLEN,MAX_SEQ)
+	#define Q1A "SELECT rowid,hist,seq FROM seq_hist WHERE seq IN ("
+	#define Q1A_LEN (sizeof Q1A - 1)
+	#define Q1B ") ORDER BY seq"
+	#define Q1B_LEN (sizeof Q1B - 1)
+	static char query[sizeof Q1A + MAX_SPAMBOX_SEQ*2 + sizeof Q1B + 50];
 
-	for(a=0; a<num_ch; ++a) {
-		int32_t seq_delay=0;
-		b_stop=a+MAX_SEQ;
-		if (b_stop > num_ch) b_stop=num_ch;
+	// generate query string
+	memcpy(query, Q1A, Q1A_LEN);
+	int q = question_marks(query + Q1A_LEN, num_seqs);
+	memcpy(query + Q1A_LEN + q, Q1B, Q1B_LEN);
+	*query_len = Q1A_LEN + Q1B_LEN + q;
+	query[*query_len]='\0';
 
-		for(b=a; b<b_stop; ++b) {
+	return query;
+}
+
+typedef struct SeqSample {
+	uint8_t *s;
+	const uint32_t *src;
+	int s_len; // how many bytes in s (utf8)
+	int src_len; // sequence length
+	int16_t delay;
+} SeqSample;
+
+static int cmp_seq_sample(const SeqSample *a, const SeqSample *b) {
+	return u8_cmp2(a->s, a->s_len, b->s, b->s_len);
+}
+
+static int scan_seq(
+	int num_ch,
+	const uint32_t ch[SPAMBOX_BUFLEN],
+	const int16_t delay_ms[SPAMBOX_BUFLEN],
+	SeqSample seq[MAX_SPAMBOX_SEQ],
+	SeqSample *uniq[MAX_SPAMBOX_SEQ],
+	int num_uniq[1])
+{
+	size_t num_samples=0;
+
+	for(int a=0; a<num_ch; ++a) {
+		int stop=a+MAX_SEQ;
+		int32_t delay=0;
+
+		for(int b=a; b<stop; ++b) {
 
 			if (uc_is_c_whitespace(ch[b])) {
 				// don't include sequences with whitespace in them
 				break;
 			}
 
-			if (seq_delay >= 0 && delay_ms[b] > 0) {
+			SeqSample *se = seq + num_samples;
+			num_samples += 1;
+			assert(num_samples <= MAX_SPAMBOX_SEQ);
+
+			if (delay >= 0 && delay_ms[b] > 0) {
 				// accumulate delay
-				seq_delay += delay_ms[b];
+				delay += delay_ms[b];
 			} else {
 				// if sequence includes one mistake (<0) stop accumulating
 				// because all longer sequences will also be invalid
-				seq_delay = -1;
+				delay = -1;
 			}
 
 			size_t l=0;
-			char *s8 = (char*) u32_to_u8(ch + a, b - a + 1, NULL, &l);
-			update_seq_hist_1(s8, l, seq_delay);
-			free(s8);
+			se->delay = delay;
+			se->src = ch + a;
+			se->s = u32_to_u8(ch + a, b - a + 1, NULL, &l);
+			se->s_len = l;
+			se->src_len = b - a + 1;
 		}
 	}
+
+	if (!num_samples) {
+		*num_uniq=0;
+		return 0;
+	}
+
+	qsort(seq, num_samples, sizeof seq[0], (QSortCmp) cmp_seq_sample);
+	*num_uniq=1;
+	uniq[0] = seq;
+	assert(num_samples <= MAX_SPAMBOX_SEQ);
+	
+	// collect pointers to start of each batch of each sequence
+	for(size_t i=1; i<num_samples; ++i) {
+		if (cmp_seq_sample(seq+i-1, seq+i)) {
+			uniq[(*num_uniq)++] = seq+i;
+			assert(*num_uniq <= MAX_SPAMBOX_SEQ);
+		}
+	}
+
+	return num_samples;
+}
+
+static void update_seq_history(KSeqHist hi[], int num_uniq, SeqSample seq[], int num_seq)
+{
+	KSeqHist *hi_end = hi + num_uniq;
+	int se=0;
+	for(; hi<hi_end; ++hi) {
+		SeqSample *first = seq + se;
+		do {
+			kseq_hist_push(hi, seq[se].delay);
+			se += 1;
+			if (se >= num_seq)
+				return;
+		} while(cmp_seq_sample(first, seq+se) == 0);
+	}
+}
+
+void db_put_seq_samples(
+	size_t num_ch,
+	const uint32_t ch[SPAMBOX_BUFLEN],
+	const int16_t delay_ms[SPAMBOX_BUFLEN] )
+{
+	SeqSample seq[MAX_SPAMBOX_SEQ], *uniq[MAX_SPAMBOX_SEQ];
+	KSeqHist hist[MAX_SPAMBOX_SEQ];
+	int64_t row_id[MAX_SPAMBOX_SEQ];
+	sqlite3_stmt *st;
+	int e, num_uniq, num_seq;
+
+	// break text into sequences, sort, count how many unique
+	num_seq = scan_seq(num_ch, ch, delay_ms, seq, uniq, &num_uniq);
+
+	if (!num_seq || !num_uniq)
+		return;
+
+	// be sure all sequences exist in database (even if all zeros)
+	// otherwise SELECT returns unexpected amount of rows
+	assert(!in_transaction);
+	db_trans_begin();
+	for(int i=0; i<num_uniq; ++i) {
+		put_seq_hist((char*)(uniq[i]->s), uniq[i]->s_len);
+	}
+	db_trans_end();
+
+	// build SELECT query
+	const char *query;
+	int query_len;
+	if (num_uniq > 999) {
+		fail("sql query can't have >999 host parameters but now we have %d sequences to submit", num_uniq);
+	}
+	query = make_query_q1(&query_len, num_uniq);
+
+	st = NULL;
+	e = sqlite3_prepare_v2(db, query, query_len, &st, NULL);
+	if (e != SQLITE_OK) {
+		db_fail("line " STRTOK(__LINE__) " prepare: Query:\n%.*s\n",
+			query_len, query);
+	}
+
+	for(int i=0; i<num_uniq; ++i) {
+		sq3_bind_text(st, 1+i, (char*)(uniq[i]->s), uniq[i]->s_len);
+	}
+
+	// get rows
+	int row_nr=0;
+	while((e=sqlite3_step(st))==SQLITE_ROW) {
+		row_id[row_nr] = sqlite3_column_int64(st, 0);
+
+		const uint8_t *s = sqlite3_column_text(st, 2);
+		size_t s_bytes = sqlite3_column_bytes(st, 2);
+		if (u8_cmp2(s, s_bytes, uniq[row_nr]->s, uniq[row_nr]->s_len))
+			db_fail("KSeqHist sequence mismatch");
+
+		const void *blob = sqlite3_column_blob(st, 1);
+		if (blob) {
+			size_t blob_sz = sqlite3_column_bytes(st, 1);
+			if (blob_sz != sizeof *hist)
+				db_fail("KSeqHist size mismatch");
+			memcpy(hist+row_nr, blob, sizeof *hist);
+		} else {
+			memset(hist+row_nr, 0, sizeof *hist);
+		}
+
+		debug_msg("fetch %4.*s: samples=%d\n",
+			(int) s_bytes, s, (int) hist[row_nr].samples);
+
+		row_nr += 1;
+	}
+	if (e != SQLITE_DONE) db_fail("fetch seq_hist not done");
+	if (row_nr != num_uniq) db_fail("fetch seq_hist row count mismatch");
+
+	sqlite3_finalize(st);
+
+	// update rows
+	update_seq_history(hist, num_uniq, seq, num_seq);
+
+	// insert back to database
+	db_trans_begin();
+	for(int i=0; i<num_uniq; ++i) {
+		KSeqStats stat = kseq_hist_stats(hist+i);
+
+		debug_msg(
+			"%4.*s: samples=%d delay=%.2f stdev=%.2f typos=%.3f cost=%.3g\n",
+			uniq[i]->s_len, uniq[i]->s, hist[i].samples,
+			stat.delay_mean, stat.delay_stdev, stat.typo_mean, stat.cost_func);
+
+		st = st_update_hist;
+
+		sq3_bind_blob(st, 1, hist+i, sizeof *hist);
+		sq3_bind_int(st, 2, hist[i].samples);
+		sq3_bind_double(st, 3, stat.delay_mean);
+		sq3_bind_double(st, 4, stat.delay_stdev);
+		sq3_bind_double(st, 5, stat.typo_mean);
+		sq3_bind_double(st, 6, stat.cost_func);
+		sq3_bind_int64(st, 7, row_id[i]);
+
+		sq3_step(st, SQLITE_DONE);
+		sqlite3_reset(st_update_hist);
+	}
+	db_trans_end();
 }
 

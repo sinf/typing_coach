@@ -52,8 +52,9 @@ void db_defrag();
 
 void db_put_seq_samples(
 	size_t num_ch,
-	const uint32_t ch[],
-	const int16_t delay_ms[] );
+	const uint32_t ch[SPAMBOX_BUFLEN],
+	const int16_t delay_ms[SPAMBOX_BUFLEN] );
+
 
 #endif
 
