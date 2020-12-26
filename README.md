@@ -1,6 +1,8 @@
 # typing_coach
 A command line program to practise your typing speed. It generates training text, measures your typing performance and saves typing data to a SQLite database for further analysis.  
 
+![Screenshot](screenshot.png)
+
 ## Compiling
 Build it
 ```
