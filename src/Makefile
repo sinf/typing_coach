@@ -1,38 +1,39 @@
-.PHONY: clean get install tests
+.PHONY: clean build_env install tests tags
 PREFIX?=/usr/local
 EXE:=typing_c
 DEPS:=$(wildcard *.c) $(wildcard *.h)
 
-$(EXE): $(DEPS) tags Makefile
-	gcc -g -O0 -D_GNU_SOURCE -DEXE_NAME='"$(EXE)"' -DGIT_REF_STR='"$(shell git rev-parse HEAD)"' -std=c11 -Wall $(filter %.c,$^) $(shell pkg-config --cflags --libs ncursesw) -lm -lsqlite3 -lunistring -o $@
+MAIN_DEP:=cpm_counter.c database.c debug.c dpy.c filepath.c ini.c kseq.c layout.c main.c mainloop.c menu.c microsec.c murmur.c persist.c prog_util.c session_timer.c spambox.c sz_mult.c tm1.c tm.c wordlist.c
 
-tests: test_of test_xkb
-	@echo TEST: sz_mult.c
-	./test_of
-	@echo TEST: layout.c
-	./test_xkb
+$(EXE): $(patsubst %.c,obj/%.o,$(MAIN_DEP))
+	gcc -g -O0 -D_GNU_SOURCE -DGIT_REF_STR='"$(shell git rev-parse HEAD)"' -std=c11 -Wall $^ $(shell pkg-config --libs ncursesw) -lm -lsqlite3 -lunistring -MMD -MP -MF dep/$(*F).d -MT '$$(EXE)' -o $@
 
-test_of: sz_mult.c sz_mult.h
-	gcc -g -O2 -D_GNU_SOURCE -D_TEST_SZMULT -std=c11 -Wall $< -o $@
+obj/%.o: %.c
+	gcc -g -O0 -D_GNU_SOURCE -DGIT_REF_STR='"$(shell git rev-parse HEAD)"' -std=c11 -Wall $(shell pkg-config --cflags ncursesw) -MMD -MP -MF dep/$(*F).d -MT $@ -c $< -o $@
 
-test_xkb: layout.c layout.h
-	gcc -g -O2 -D_GNU_SOURCE -D_TEST_XKB -std=c11 -Wall $< -o $@
+TESTBIN:=$(addprefix test/,layout sz_mult)
+tests: $(TESTBIN)
+	for b in $^; do ./$$b > $$b.out 2>&1; echo "$$b: $$?"; done
 
-get:
+test/sz_mult: test/sz_mult_test.c sz_mult.h
+	gcc -I. -g -O0 -D_GNU_SOURCE -std=c11 -Wall $< -o $@
+
+test/layout: test/layout_test.c layout.h
+	gcc -I. -g -O0 -D_GNU_SOURCE -std=c11 -Wall $< -o $@
+
+build_env:
 	sudo apt install libncursesw5-dev libsqlite3-dev ctags cscope libunistring-dev
 
-tags: $(DEPS)
+tags:
 	@rm -f tags cscope.out
 	-ctags -R -f $@ .
 	-cscope -R -b -f cscope.out
 
-cscope.out: $(DEPS)
-	@rm -f $@
-	cscope -R -b -f $@
-
 clean:
-	rm -fv test_of test_xkb typing_c
+	rm -fv test_of test_xkb $(EXE) obj/*.o obj/*.d *.d $(TESTBIN) $(addsuffix .out,$(TESTBIN))
 
 install: $(EXE)
 	sudo cp ./$(EXE) $(PREFIX)/bin/$(EXE)
+
+-include $(wildcard dep/*.d)
 

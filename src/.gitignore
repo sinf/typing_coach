@@ -3,4 +3,10 @@ typing_c
 wordlist
 tags
 cscope.out
-test_xkb
+test/layout
+test/layout.out
+test/fdict
+test/fdict.out
+test/sz_mult
+test/sz_mult.out
+

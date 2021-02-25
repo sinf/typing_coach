@@ -16,6 +16,7 @@
 #include "mainloop.h"
 #include "persist.h"
 
+#define EXE_NAME "typing_c"
 static int quit_flag = 0;
 static const char *explicit_db_name = NULL;
 

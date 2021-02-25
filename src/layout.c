@@ -51,11 +51,3 @@ const char* detect_layout(void)
 	return layout;
 }
 
-#ifdef _TEST_XKB
-int main() {
-	printf("Layout:\n");
-	printf("%s\n", detect_layout());
-	return 0;
-}
-#endif
-
