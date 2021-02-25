@@ -9,9 +9,10 @@ static inline uint32_t murmur_32_scramble(uint32_t k) {
     return k;
 }
 
-uint32_t murmur3_32(const uint8_t* key, size_t len, uint32_t seed)
+uint32_t murmur3_32(const void* key1, size_t len, uint32_t seed)
 {
-	uint32_t h = seed;
+    const uint8_t *key = key1;
+    uint32_t h = seed;
     uint32_t k;
     /* Read in groups of 4. */
     for (size_t i = len >> 2; i; i--) {
