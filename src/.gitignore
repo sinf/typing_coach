@@ -9,4 +9,7 @@ test/fdict
 test/fdict.out
 test/sz_mult
 test/sz_mult.out
+junk
+obj/*.o
+dep/*.d
 
