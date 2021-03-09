@@ -16,12 +16,16 @@ int opt_auto_space = 0;
 void (*tm_words)(void) = tm1_words;
 int (*tm_info)(int) = tm1_info;
 
+static uint64_t last_key_press_time = 0;
+static int last_key_code = 0;
+static int last_key_status = 0;
+
 static int draw_status_bar()
 {
 	const int c0 = C_STATUS;
 	dpy_print(0, c0, "Database: %s", database_path);
 	dpy_print(1, c0, "%s", fmt_session_time());
-	dpy_print(2, c0, "cpm: %8s | wpm: %8s | keystrokes : %08ld", cpm_str, wpm_str, the_typing_counter);
+	dpy_print(2, c0, "cpm: %8s | wpm: %8s | keystrokes : %08ld | key: %lc %d %d", cpm_str, wpm_str, the_typing_counter, (wchar_t) last_key_code, last_key_code, last_key_status);
 	dpy_print(3, c0, "Access menu with backspace");
 	dpy_print(4, c0, "-------");
 	return 5;
@@ -50,22 +54,15 @@ static void get_more_words()
 	db_trans_begin();
 }
 
-static int tm_process_input()
+static void tm_process_input(int c)
 {
-	static uint64_t last_ts = 0;
 	int delay_ms = 0;
-	int c = read_key();
-
-	if (c == KEY_BACKSPACE) {
-		last_ts = 0;
-		return 1;
-	}
 
 	uint64_t ts = get_microsec();
 	int expected = sb_expected();
 
-	if (last_ts != 0) {
-		delay_ms = (ts - last_ts) / 1000UL;
+	if (last_key_press_time != 0) {
+		delay_ms = (ts - last_key_press_time) / 1000UL;
 	}
 
 	sb_putc(c, delay_ms);
@@ -76,17 +73,15 @@ static int tm_process_input()
 	if (sb_end_reached()) {
 		get_more_words();
 		// ignore the first character since the user spends a second reading the new words
-		last_ts = 0;
+		last_key_press_time = 0;
 	} else {
-		last_ts = ts;
+		last_key_press_time = ts;
 	}
 
 	db_put(c, expected, delay_ms);
 
 	if (delay_ms != 0)
 		calc_cpm(delay_ms, c==expected);
-	
-	return 0;
 }
 
 void training_session(void)
@@ -94,8 +89,27 @@ void training_session(void)
 	if (sb_end_reached())
 		get_more_words();
 	
-	do {
+	last_key_press_time = 0;
+	timeout(1000);
+
+	for(;;)
+	{
 		tm_repaint();
-	} while(!tm_process_input());
+
+		wint_t c;
+		int ret = get_wch(&c);
+		last_key_code = c;
+		last_key_status = ret;
+
+		if (ret == ERR)
+			continue;
+	
+		if (c == KEY_BACKSPACE || c == 127)
+			break;
+
+		tm_process_input(c);
+	}
+
+	notimeout(stdscr, 1);
 }
 
