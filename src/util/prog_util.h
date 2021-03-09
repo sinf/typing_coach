@@ -14,6 +14,7 @@ void fail(const char *msg1, ...);
 __attribute__((format(printf,2,3)))
 void quit_msg(int errNo, const char *msg1, ...);
 
+void endwin_if_needed();
 void cleanup();
 void quit();
 void quit_int(int i);

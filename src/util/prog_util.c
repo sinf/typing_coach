@@ -19,10 +19,16 @@ void *Realloc(void *p, size_t n, size_t s, size_t z)
 	return p;
 }
 
+void endwin_if_needed()
+{
+	if (need_endwin) endwin();
+	need_endwin=0;
+}
+
 void cleanup()
 {
+	endwin_if_needed();
 	db_close();
-	if (need_endwin) endwin();
 	save_settings();
 }
 
