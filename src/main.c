@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <dirent.h>
 #include "debug.h"
 #include "prog_util.h"
 #include "database.h"
@@ -40,14 +41,42 @@ static void set_db_path(const char *name)
 	database_path = fp;
 }
 
+void list_dbs()
+{
+	Filepath path;
+	int count=0;
+	get_path(path, "%c", '\0');
+	DIR *dp = opendir(path);
+	if (dp) {
+		struct dirent *de;
+		while((de=readdir(dp))) {
+			const char *fn = de->d_name;
+			int l = strlen(de->d_name);
+			if (l > 3 && !strcmp(fn+l-3, ".db")) {
+				get_path(path, "%s", de->d_name);
+				printf("%-20.*s %s\n", l-3, de->d_name, path);
+				count+=1;
+			}
+		}
+	}
+	if (!count) {
+		printf("(none)\n");
+	}
+}
+
 void parse_args(int argc, char **argv)
 {
 	int d_flag=0;
 	struct stat s;
 	int c;
 	errno=0;
-	while((c = getopt(argc, argv, "hc:d:w:")) != -1) {
+	while((c = getopt(argc, argv, "hlc:d:w:")) != -1) {
 		switch(c) {
+			case 'l':
+				list_dbs();
+				exit(0);
+				break;
+
 			case 'c':
 				if (d_flag) {
 					quit_msg(0, "Can only specify once -d or -c");
@@ -92,6 +121,7 @@ void parse_args(int argc, char **argv)
 "Usage: " EXE_NAME " [-d/-c NAME] [-w FILENAME]\n\n"
 "Arguments\n"
 "  -h show this help text\n"
+"  -l list databases you have\n"
 "  -c NAME\n"
 "     create the main sqlite3 database name\n"
 "  -d NAME\n"
