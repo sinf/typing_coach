@@ -201,6 +201,7 @@ void db_fail_x(const char *file, const char *fun, int ln, const char *fmt, ...)
 	vfprintf(stderr, fmt, a);
 	va_end(a);
 
+	fprintf(stderr, "\n");
 	cleanup();
 	abort();
 	exit(1);
@@ -440,7 +441,7 @@ void db_get_sequences_hist(size_t count, const KSeq seqs[], KSeqHist hist_out[])
 			}
 		}
 
-		if (bytes == B) {
+		if (bytes == B && kseq_hist_validate(blob)) {
 			memcpy(hist_out+i, blob, B);
 		} else {
 			memset(hist_out+i, 0, B);
@@ -749,11 +750,14 @@ static int scan_seq(
 	size_t num_samples=0;
 
 	for(int a=0; a<num_ch; ++a) {
-		int stop=a+MAX_SEQ;
 		int32_t delay=0;
+		int stop=a+MAX_SEQ;
+		if (stop > num_ch) stop = num_ch;
 
 		for(int b=a; b<stop; ++b) {
-
+			if (delay_ms[b] == 0) {
+				continue; // ??
+			}
 			if (uc_is_c_whitespace(ch[b])) {
 				// don't include sequences with whitespace in them
 				break;
@@ -804,17 +808,30 @@ static int scan_seq(
 
 static void update_seq_history(KSeqHist hi[], int num_uniq, SeqSample seq[], int num_seq)
 {
+	FILE *fp;
+#ifndef NDEBUG
+	fp = fopen("/tmp/kseqhist.txt", "w");
+#endif
+
 	KSeqHist *hi_end = hi + num_uniq;
 	int se=0;
 	for(; hi<hi_end; ++hi) {
 		SeqSample *first = seq + se;
 		do {
+			if (fp) {
+				fprintf(fp, "%.*s %d %d\n",
+						seq[se].s_len, (char*) seq[se].s,
+						seq[se].src_len, (int) seq[se].delay);
+			}
 			kseq_hist_push(hi, seq[se].delay);
 			se += 1;
 			if (se >= num_seq)
 				return;
 		} while(cmp_seq_sample(first, seq+se) == 0);
+		if (fp)
+			fprintf(fp, "\n");
 	}
+	if (fp) fclose(fp);
 }
 
 void db_put_seq_samples(
@@ -870,17 +887,25 @@ void db_put_seq_samples(
 		const uint8_t *s = sqlite3_column_text(st, 2);
 		size_t s_bytes = sqlite3_column_bytes(st, 2);
 		if (u8_cmp2(s, s_bytes, uniq[row_nr]->s, uniq[row_nr]->s_len))
-			db_fail("KSeqHist sequence mismatch");
+			fail("KSeqHist sequence mismatch: %.*s vs %.*s",
+					(int) s_bytes, s,
+					uniq[row_nr]->s_len, uniq[row_nr]->s);
 
 		const void *blob = sqlite3_column_blob(st, 1);
+		int hist_ok = 0;
+
 		if (blob) {
 			size_t blob_sz = sqlite3_column_bytes(st, 1);
 			if (blob_sz != sizeof *hist)
-				db_fail("KSeqHist size mismatch");
-			memcpy(hist+row_nr, blob, sizeof *hist);
-		} else {
-			memset(hist+row_nr, 0, sizeof *hist);
+				fail("KSeqHist size mismatch");
+			if (kseq_hist_validate(blob)) {
+				memcpy(hist+row_nr, blob, sizeof *hist);
+				hist_ok = 1;
+			}
 		}
+
+		if (!hist_ok)
+			memset(hist+row_nr, 0, sizeof *hist);
 
 		debug_msg("fetch %4.*s: samples=%d\n",
 			(int) s_bytes, s, (int) hist[row_nr].samples);
