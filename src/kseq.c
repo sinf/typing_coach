@@ -33,10 +33,9 @@ void kseq_hist_push(KSeqHist *hist, int16_t delay)
 
 	if (hist->samples < KSEQ_HIST) {
 		hist->samples += 1;
-	} else {
-		i = i==0 ? KSEQ_HIST-1 : i-1;
 	}
 
+	i = i==0 ? KSEQ_HIST-1 : i-1;
 	hist->start_pos = i;
 	hist->delay_ms[i] = delay;
 }
