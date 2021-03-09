@@ -43,6 +43,11 @@ const char *database_path = "";
 long the_typing_counter = 0;
 static long words_table_rows=0;
 
+long db_total_word_count()
+{
+	return words_table_rows;
+}
+
 static sqlite3 *db = 0;
 
 // prepared statements. remember to add PREP() statement in db_open:

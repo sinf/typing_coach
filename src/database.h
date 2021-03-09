@@ -59,6 +59,7 @@ void db_put_seq_samples(
 	const uint32_t ch[SPAMBOX_BUFLEN],
 	const int16_t delay_ms[SPAMBOX_BUFLEN] );
 
+long db_total_word_count();
 
 #endif
 
