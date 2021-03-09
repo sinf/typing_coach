@@ -61,6 +61,7 @@ void sb_clear()
 		cbuf.ch[i] = L' ';
 		cbuf.wp[i] = NULL;
 		cbuf.color[i] = C_UNTYPED;
+		cbuf.delay[i] = 0;
 	}
 }
 
@@ -75,6 +76,7 @@ void sb_write(int len, const uint32_t *s, Word *w)
 		cbuf.ch[j] = s[i];
 		cbuf.color[j] = C_UNTYPED;
 		cbuf.wp[j] = w;
+		cbuf.delay[i] = 0;
 	}
 }
 
