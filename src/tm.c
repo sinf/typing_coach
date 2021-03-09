@@ -78,10 +78,10 @@ static void tm_process_input(int c)
 		last_key_press_time = ts;
 	}
 
-	db_put(c, expected, delay_ms);
-
-	if (delay_ms != 0)
+	if (delay_ms != 0) {
+		db_put(c, expected, delay_ms);
 		calc_cpm(delay_ms, c==expected);
+	}
 }
 
 void training_session(void)
@@ -111,5 +111,8 @@ void training_session(void)
 	}
 
 	notimeout(stdscr, 1);
+	db_trans_end();
+	sb_submit_sequences();
+	sb_clear();
 }
 
