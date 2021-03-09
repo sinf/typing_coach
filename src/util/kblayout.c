@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include "kblayout.h"
 
 #define PIPE_MAX 4096
 #define LAYOUT_MAX 256

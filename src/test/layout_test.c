@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "layout.c"
+#include "kblayout.c"
 
 int main() {
 	printf("Layout:\n");
