@@ -91,6 +91,7 @@ void parse_args(int argc, char **argv)
 					printf("Using database: %s\n", database_path);
 				}
 				db_open();
+				quit_flag = 1;
 				break;
 
 			case 'd':
@@ -119,15 +120,16 @@ void parse_args(int argc, char **argv)
 "\nTyping coach\n"
 "git hash: " GIT_REF_STR "\n\n"
 "Usage: " EXE_NAME " [-d/-c NAME] [-w FILENAME]\n\n"
-"Arguments\n"
+"Optional arguments\n"
 "  -h show this help text\n"
 "  -l list databases you have\n"
 "  -c NAME\n"
-"     create the main sqlite3 database name\n"
+"     create sqlite3 database (and optionally import wordlists) and quit\n"
 "  -d NAME\n"
 "     specify the main sqlite3 database name (must exist)\n"
 "  -w FILENAME\n"
 "     merge wordlist to database from a file (utf8, one word per line)\n"
+"\n"
 );
 				exit(1);
 			default: break;
