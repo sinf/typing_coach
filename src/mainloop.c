@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdio.h>
 #include "prog_util.h"
 #include "dpy.h"
 #include "database.h"
@@ -12,9 +13,19 @@ void show_slow_seq()
 {
 	KSeq *seqs;
 	const size_t limit = 20;
-	size_t i,
-		n = db_get_sequences(10000, 1, MAX_SEQ, &seqs),
-		n1 = n<limit ? n : limit;
+	size_t i, n, n1;
+
+	n = db_get_sequences(10000, 1, MAX_SEQ, &seqs);
+	n1 = 0;
+
+	for(i=0; i<n; ++i) {
+		// discard undersampled sequences
+		if (seqs[i].samples_raw >= 3) {
+			seqs[n1++] = seqs[i];
+			if (n1 >= limit)
+				break;
+		}
+	}
 	
 	KSeqHist hist[limit];
 	db_get_sequences_hist(n1, seqs, hist);
@@ -23,28 +34,36 @@ void show_slow_seq()
 	dpy_print(0, C_STATUS, "Press any key to close");
 	dpy_print(1, C_STATUS, "Top %d slowest sequences", (int) n1);
 
-	dpy_print(2, C_STATUS, "%10.10s %10.10s %8.8s %8.8s %8.8s %7.7s %s",
+	dpy_print(2, C_STATUS, "%10.10s %8.8s %8.8s %8.8s %8.8s %7.7s %10.10s %s",
 			"sequence", "cost", "samples",
-			"ms", "ms/stdev", "typo%",
+			"ms", "ms/stdev", "typo%", "cost_func",
 			"| buffer");
 
 	for(i=0; i<n1; ++i) {
 		KSeq s = seqs[i];
 		KSeqHist h = hist[i];
 		KSeqStats st = kseq_hist_stats(&h);
-		int d[8];
+		char buf[8][32] = {""};
 
-		for(unsigned j=0; j<8; ++j) {
-			d[j] = h.delay_ms[(h.start_pos + j) % KSEQ_HIST];
+		for(unsigned j=0; j<8 && j<h.samples; ++j) {
+			int d = h.delay_ms[(h.start_pos + j) % KSEQ_HIST];
+			if (d < 0)
+				snprintf(buf[j], sizeof(buf[j]), " x");
+			else
+				snprintf(buf[j], sizeof(buf[j]), " %d", d );
 		}
 
 		dpy_print(3+i, C_NORMAL,
-				"%10.*ls %10.2g %8d %8.0f %8.3f %7.3f"
-				" | %d %d %d %d %d %d %d %d"
-				"\n",
+				"%10.*ls %8.2g %8d"
+				" %8.0f %8.0f %7.2f %10.2g"
+				" |%s%s%s%s%s%s%s%s",
 				s.len, s.s, s.cost, s.samples,
-				st.delay_mean, st.delay_stdev, st.typo_mean*100.0,
-				d[0], d[1], d[2], d[3], d[5], d[6], d[7], d[8]
+				CLIP(st.delay_mean, -9999, 9999),
+				CLIP(st.delay_stdev, -9999, 9999),
+				CLIP(st.typo_mean*100.0, -9999, 9999),
+				CLIP(st.cost_func, -9999, 9999),
+				buf[0], buf[1], buf[2], buf[3],
+				buf[4], buf[5], buf[6], buf[7]
 			);
 	}
 
