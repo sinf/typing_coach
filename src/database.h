@@ -15,12 +15,16 @@ void db_put(KeyCode pressed, KeyCode expected, int delay_ms);
 void db_trans_begin();
 void db_trans_end();
 
+/* get ch_limit most recent key presses, then compile a list of sequences out of them */
 size_t db_get_sequences(
 int ch_limit,
 int sl_min,
 int sl_max,
 KSeq *out[1]
 );
+
+// look up history for each supplied sequence
+void db_get_sequences_hist(size_t count, const KSeq seqs[], KSeqHist hist_out[]);
 
 typedef int (*CmpFunc)(const void*,const void*);
 int cmp_seq_cost(const KSeq *a, const KSeq *b);

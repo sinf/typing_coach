@@ -126,7 +126,7 @@ static const char sql_update_hist[] =
 "UPDATE seq_hist SET hist=?, samples=?, delay_mean=?, delay_stdev=?, typo_mean=?, cost_func=? WHERE rowid=?";
 
 static const char sql_get_hist[] =
-"SELECT rowid,hist FROM seq_hist WHERE seq=?";
+"SELECT rowid,hist FROM seq_hist WHERE seq=? LIMIT 1";
 
 static const char sql_put_key[] =
 "INSERT INTO keystrokes (pressed,expected,delay_ms,timestamp) VALUES (?,?,?,?)";
@@ -185,6 +185,8 @@ because short sequences like "e" are included in too many words
 __attribute__((format(printf,4,5)))
 void db_fail_x(const char *file, const char *fun, int ln, const char *fmt, ...)
 {
+	endwin_if_needed();
+
 	va_list a;
 	va_start(a, fmt);
 
@@ -338,8 +340,7 @@ size_t db_get_sequences(int num_ch, int sl_min, int sl_max, KSeq *out[1])
 	size_t out_alloc = 0, grow = 20000;
 	*out = NULL;
 
-	e = sqlite3_bind_int(s, 1, num_ch);
-	if (e != SQLITE_OK) db_fail("get_recent bind");
+	sq3_bind_int(s, 1, num_ch);
 
 	while((e=sqlite3_step(s))==SQLITE_ROW) {
 		int seq, k0, k1, kd;
@@ -416,6 +417,38 @@ size_t db_get_sequences(int num_ch, int sl_min, int sl_max, KSeq *out[1])
 	qsort(*out, n_seqs, sizeof **out, (CmpFunc) cmp_seq_cost);
 
 	return n_seqs;
+}
+
+// look up history for each supplied sequence
+void db_get_sequences_hist(size_t count, const KSeq seqs[], KSeqHist hist_out[])
+{
+	sqlite3_stmt *s = st_get_hist;
+
+	for(size_t i=0; i<count; ++i) {
+		const size_t B = sizeof *hist_out;
+		size_t l=0, bytes=0;
+		uint8_t *buf = u32_to_u8(seqs[i].s, seqs[i].len, NULL, &l);
+		const void *blob;
+
+		sq3_bind_text(s, 1, (char*) buf, l);
+
+		if (sqlite3_step(s) == SQLITE_ROW) {
+			blob = sqlite3_column_blob(s, 1);
+			if (blob) {
+				bytes = sqlite3_column_bytes(s, 1);
+				assert(bytes == B);
+			}
+		}
+
+		if (bytes == B) {
+			memcpy(hist_out+i, blob, B);
+		} else {
+			memset(hist_out+i, 0, B);
+		}
+
+		sqlite3_reset(s);
+		free(buf);
+	}
 }
 
 size_t remove_duplicate_sequences(KSeq *s, size_t count)
