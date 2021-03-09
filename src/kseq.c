@@ -14,9 +14,22 @@ int kseq_cmp(const KSeq *a, const KSeq *b)
 	return res;
 }
 
+int kseq_hist_validate(const KSeqHist *hist)
+{
+	if (hist->start_pos >= KSEQ_HIST) return 0;
+	if (hist->samples > KSEQ_HIST) return 0;
+	return 1;
+}
+
 void kseq_hist_push(KSeqHist *hist, int16_t delay)
 {
 	int i = hist->start_pos;
+
+	if (delay < 0 && hist->delay_ms[i] < 0) {
+		// avoid inserting more than one sequential typo
+		// to prevent accidentally clearing the short buffer with a typo burst
+		return;
+	}
 
 	if (hist->samples < KSEQ_HIST) {
 		hist->samples += 1;
@@ -39,7 +52,7 @@ KSeqStats kseq_hist_stats(KSeqHist *h)
 		unsigned j = (h->start_pos + i) % KSEQ_HIST;
 		unsigned d = h->delay_ms[j];
 		delay_d[i] = d;
-		if (d < 0) {
+		if (d <= 0) {
 			typos += 1;
 		} else {
 			delays += d;
@@ -54,7 +67,7 @@ KSeqStats kseq_hist_stats(KSeqHist *h)
 		s.delay_mean = delays / (double) delay_n;
 		if (delay_n > 1) {
 			for(i=0; i<n; ++i) {
-				if (delay_d[i] >= 0) {
+				if (delay_d[i] > 0) {
 					double d = delay_d[i] - s.delay_mean;
 					var += d*d;
 				}

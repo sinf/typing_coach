@@ -26,7 +26,6 @@ int kseq_cmp(const KSeq *a, const KSeq *b);
 
 #define is_whitespace uc_is_property_white_space
 
-
 /* KSEQ_HIST:
 How much history to remember for each key sequence
 should be enough to analyze the user's current typing ability,
@@ -80,6 +79,9 @@ z = k*n - (k-1)*(k-1+1)/2
 z = k*n - k*(k-1)/2
 */
 #define SUBSTR_COUNT(n,k) ((n)*(k) - (k)*((k)-1)/2)
+
+// used for checking if blob from sqlite is usable
+int kseq_hist_validate(const KSeqHist *hist);
 
 #endif
 
