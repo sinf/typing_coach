@@ -11,17 +11,41 @@
 void show_slow_seq()
 {
 	KSeq *seqs;
+	const size_t limit = 20;
 	size_t i,
 		n = db_get_sequences(10000, 1, MAX_SEQ, &seqs),
-		n1 = n<20 ? n : 20;
+		n1 = n<limit ? n : limit;
+	
+	KSeqHist hist[limit];
+	db_get_sequences_hist(n1, seqs, hist);
 
 	dpy_begin();
 	dpy_print(0, C_STATUS, "Press any key to close");
 	dpy_print(1, C_STATUS, "Top %d slowest sequences", (int) n1);
 
+	dpy_print(2, C_STATUS, "%10.10s %10.10s %8.8s %8.8s %8.8s %7.7s %s",
+			"sequence", "cost", "samples",
+			"ms", "ms/stdev", "typo%",
+			"| buffer");
+
 	for(i=0; i<n1; ++i) {
 		KSeq s = seqs[i];
-		dpy_print(2+i, C_NORMAL, "%8.*ls  cost=%.3g samples=%d\n", s.len, s.s, s.cost, s.samples);
+		KSeqHist h = hist[i];
+		KSeqStats st = kseq_hist_stats(&h);
+		int d[8];
+
+		for(unsigned j=0; j<8; ++j) {
+			d[j] = h.delay_ms[(h.start_pos + j) % KSEQ_HIST];
+		}
+
+		dpy_print(3+i, C_NORMAL,
+				"%10.*ls %10.2g %8d %8.0f %8.3f %7.3f"
+				" | %d %d %d %d %d %d %d %d"
+				"\n",
+				s.len, s.s, s.cost, s.samples,
+				st.delay_mean, st.delay_stdev, st.typo_mean*100.0,
+				d[0], d[1], d[2], d[3], d[5], d[6], d[7], d[8]
+			);
 	}
 
 	dpy_refresh();
