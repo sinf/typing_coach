@@ -74,3 +74,25 @@ void quit_int(int sig)
 	exit(1);
 }
 
+int ask_yesno(const char *fmt, ...)
+{
+	int c, ret=0;
+	for(;;) {
+		va_list ap;
+		va_start(ap, fmt);
+		vprintf(fmt, ap);
+		va_end(ap);
+		printf(" y/N: ");
+		fflush(stdout);
+		c = fgetc(stdin);
+		if (c == 'Y' || c == 'y') {
+			ret = 1;
+			break;
+		}
+		if (c == 'N' || c == 'n')
+			break;
+	}
+	do { c = fgetc(stdin); } while (c != '\n' && c != EOF);
+	return ret;
+}
+

@@ -31,4 +31,5 @@ extern struct Wordlist *the_wordlist;
 
 typedef int (*QSortCmp)(const void *a, const void *b);
 
+int ask_yesno(const char *fmt, ...);
 
