@@ -23,15 +23,8 @@ static const char *explicit_db_name = NULL;
 
 static void ask_create()
 {
-	for(;;) {
-		printf("Database named %s does not exist, create? Y/n: ",
-			explicit_db_name);
-		fflush(stdout);
-		char c = fgetc(stdin);
-		if (c == 'Y' || c == 'y')
-			break;
+	if (!ask_yesno("Database named %s does not exist, create?", explicit_db_name))
 		quit_msg(0, "Canceled");
-	}
 }
 
 static void set_db_path(const char *name)
@@ -39,6 +32,23 @@ static void set_db_path(const char *name)
 	static Filepath fp="";
 	get_path(fp, "%s.db", name);
 	database_path = fp;
+}
+
+static void delete_db(const char *name)
+{
+	Filepath path;
+	get_path(path, "%s.db", name);
+	if (ask_yesno("Delete %s (%s)?", name, path)) {
+		if (remove(path)) {
+			printf("Error: %s\n", strerror(errno));
+		} else {
+			if (!strcmp(database_path, path)) {
+				set_db_path("default");
+			}
+			get_path(path, "%s.db-journal", name);
+			remove(path);
+		}
+	}
 }
 
 void list_dbs()
@@ -70,7 +80,7 @@ void parse_args(int argc, char **argv)
 	struct stat s;
 	int c;
 	errno=0;
-	while((c = getopt(argc, argv, "hlc:d:w:")) != -1) {
+	while((c = getopt(argc, argv, "hlc:d:w:x:")) != -1) {
 		switch(c) {
 			case 'l':
 				list_dbs();
@@ -112,6 +122,11 @@ void parse_args(int argc, char **argv)
 				}
 				printf("Merging wordlist.. %s\n", optarg);
 				read_wordlist(optarg);
+				quit_flag = 1;
+				break;
+
+			case 'x':
+				delete_db(optarg);
 				quit_flag = 1;
 				break;
 
@@ -159,6 +174,12 @@ int main(int argc, char **argv)
 	if (quit_flag) {
 		printf("Defragmenting database...\n");
 		db_defrag();
+		quit();
+	}
+
+	if (db_total_word_count() == 0) {
+		printf("No words in database: %s\n", database_path);
+		printf("Import some first ([-c/-d ...] -w ...) or select a different database (-d ...)\n");
 		quit();
 	}
 
