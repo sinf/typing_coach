@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include <unistr.h>
 #include <unicase.h>
 #include <unictype.h>
@@ -40,6 +41,21 @@ char *skip_lines(char *buf, int count)
 	return buf;
 }
 
+static int is_word(char *buf, int count)
+{
+	if (count < 2) {
+		return 0;
+	}
+	int last = count - 1;
+	for(int i=0; i<count; ++i) {
+		char c = buf[i];
+		if (!isalnum(c) && !(ispunct(c) && i == last)) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
 #define MAX_WORDS 30
 static Word my_words[MAX_WORDS];
 
@@ -56,7 +72,7 @@ void tm2_words(void)
 	while ((t = u8_strtok(temp1, (uint8_t*) " \t\n\r\v", &temp2))) {
 		temp1 = NULL;
 		size_t l = u8_strlen(t);
-		if (l < 50) {
+		if (l < 50 && is_word((char*) t, l)) {
 			my_words[n] = utf8_to_word((char*) t, l);
 			sb_add_word(my_words + n);
 			n += 1;
