@@ -6,6 +6,7 @@
 #include "database.h"
 #include "tm.h"
 #include "menu.h"
+#include "kseq.h"
 #include "mainloop.h"
 #include "spambox.h"
 
@@ -97,8 +98,8 @@ static void test_pick_words(const char *seq, const int seq_b)
 }
 static void query_seq_words()
 {
-	char buf[256];
-	int n = read_input("Sequence to search", buf, sizeof buf);
+	char buf[MAX_SEQ+1];
+	int n = read_input("Sequence to search (max " STRTOK(MAX_SEQ) " characters)", buf, sizeof buf);
 	if (n > 0)
 		test_pick_words(buf, n);
 }
