@@ -33,10 +33,12 @@ static int draw_status_bar()
 
 static void tm_repaint()
 {
+	dpy_begin();
 	int y;
 	y = draw_status_bar();
 	y = sb_paint(y);
 	y = tm_info(y);
+	dpy_refresh();
 }
 
 static void get_more_words()
@@ -50,6 +52,7 @@ static void get_more_words()
 	sb_clear();
 
 	tm_words();
+	tm_repaint();
 
 	db_trans_begin();
 }

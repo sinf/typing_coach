@@ -17,5 +17,11 @@ pick relevant words based on what might be slow
 void tm1_words(void);
 int tm1_info(int y);
 
+/* training mode 2:
+   +type the contents of a text file
+   +*/
+void tm2_words(void);
+int tm2_info(int y);
+
 #endif
 

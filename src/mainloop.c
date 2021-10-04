@@ -111,13 +111,12 @@ void main_menu()
 		M_TM2,
 		M_SLOW_SEQ,
 		M_QUERY_SEQ,
-		M_TODO,
 		M_EXIT,
 	};
 	static const MenuEntry m[] = {
 		M_BUTTON("Training mode 1: slow sequences", M_TM1),
-		M_BUTTON("...", M_TODO),
-		M_BUTTON("...", M_TODO),
+		M_BUTTON("Training mode 2: wikipedia", M_TM2),
+//		M_BUTTON("...", M_TODO),
 		M_TOGGLE("Automatic spacebar", &opt_auto_space),
 		M_TOGGLE("Advance despite typo", &sb_continue_on_typo),
 		M_BUTTON("Show slowest sequences", M_SLOW_SEQ),
@@ -139,6 +138,9 @@ void main_menu()
 				training_session();
 				break;
 			case M_TM2:
+				tm_words = tm2_words;
+				tm_info = tm2_info;
+				training_session();
 				break;
 			case M_SLOW_SEQ:
 				show_slow_seq();

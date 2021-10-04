@@ -3,7 +3,7 @@
 
 PREFIX?=/usr/local
 VPATH:=.:./util
-MAIN_DEP:=cpm_counter.c database.c debug.c dpy.c filepath.c ini.c kseq.c kblayout.c main.c mainloop.c menu.c microsec.c murmur.c persist.c prog_util.c session_timer.c spambox.c sz_mult.c tm1.c tm.c wordlist.c
+MAIN_DEP:=cpm_counter.c database.c debug.c dpy.c filepath.c ini.c kseq.c kblayout.c main.c mainloop.c menu.c microsec.c murmur.c persist.c prog_util.c session_timer.c spambox.c sz_mult.c tm1.c tm2.c tm.c wordlist.c
 MAIN_OBJ:=$(patsubst %.c,obj/%.o,$(MAIN_DEP))
 MAIN_EXE:=typing_c
 TESTBIN:=$(addprefix test/,layout sz_mult)
